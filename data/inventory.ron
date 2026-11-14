@@ -1,0 +1,39 @@
+// Cards available at each facility:
+//   limit: how many copies can go in one deck
+//   level: the card's current level
+{
+	Kitchen: {
+		HeatControl: (limit: 4, level: 7),
+		Cut: (limit: 4, level: 8),
+		Season: (limit: 1, level: 1),
+		SlowCook: (limit: 2, level: 4),
+		Ferment: (limit: 2, level: 2),
+		Bake: (limit: 1, level: 2),
+		ExactCook: (limit: 1, level: 1),
+	},
+	Forge: {
+		Forge: (limit: 3, level: 6),
+		Charge: (limit: 2, level: 3),
+		Sharpening: (limit: 1, level: 1),
+		MultiForge: (limit: 2, level: 1),
+		HeatUp: (limit: 2, level: 4),
+		Reforge: (limit: 2, level: 2),
+		Soulbind: (limit: 2, level: 1),
+		ForgeExpert: (limit: 4, level: 5),
+		Pyroburst: (limit: 2, level: 1),
+		Ignite: (limit: 1, level: 1),
+	},
+	Alchemy: {
+		Ingredients: (limit: 4, level: 6),
+		Grind: (limit: 4, level: 8),
+		Distill: (limit: 1, level: 1),
+		Crystallize: (limit: 1, level: 1),
+		Overload: (limit: 2, level: 2),
+		Enchant: (limit: 2, level: 4),
+		Fuse: (limit: 1, level: 3),
+		Reversal: (limit: 1, level: 1),
+		Conflux: (limit: 2, level: 1),
+		Harmonia: (limit: 1, level: 1),
+		Overcharge: (limit: 2, level: 1),
+	},
+}

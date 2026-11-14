@@ -1,0 +1,160 @@
+// Card values by level. `default` is used for any level not listed in `levels`.
+// Season, Ferment, Ignite, Harmonia, Conflux, Crystallize and Distill have no values.
+(
+	// ---------- Kitchen ----------
+
+	// Random points rolled between min and max (inclusive)
+	cut: (
+		default: (min: 0, max: 0),
+		levels: {
+			1: (min: 1, max: 1),
+			2: (min: 2, max: 2),
+			3: (min: 3, max: 3),
+			4: (min: 4, max: 8),
+			5: (min: 8, max: 12),
+			6: (min: 10, max: 15),
+			7: (min: 1, max: 1), // TODO
+			8: (min: 13, max: 18),
+			9: (min: 13, max: 18),
+		},
+	),
+	// TODO: Levels 1-6, 9+
+	heat_control: (
+		default: 0,
+		levels: { 1: 3, 2: 4, 3: 6, 4: 8, 5: 10, 6: 12, 7: 15, 8: 18 },
+	),
+	slow_cook: (
+		default: 0,
+		levels: { 1: 4, 2: 2, 3: 4, 4: 5, 5: 6 },
+	),
+	// Max level is 2
+	bake: (
+		default: 10,
+		levels: { 1: 5 },
+	),
+	// Repeats needed in a row to double at the end
+	exact_cook: (
+		default: 3,
+		levels: { 1: 1, 2: 2 },
+	),
+
+	// ---------- Forge ----------
+
+	forge: (
+		default: 0,
+		levels: { 1: 1, 2: 2, 3: 3, 4: 5, 5: 10, 6: 15, 7: 20 },
+	),
+	// charges: forge hits that hit every colour. 99 means unlimited (decks are < 10 cards).
+	charge: (
+		default: (points: 0, charges: 0),
+		levels: {
+			1: (points: 0, charges: 1),
+			2: (points: 0, charges: 3),
+			3: (points: 0, charges: 99),
+			4: (points: 5, charges: 99),
+		},
+	),
+	sharpening: (
+		default: 0,
+		levels: { 1: 10, 2: 12 },
+	),
+	// Extra forge hits granted
+	multi_forge: (
+		default: 0,
+		levels: { 1: 2, 2: 3 },
+	),
+	heat_up: (
+		default: 0,
+		levels: { 1: 3, 2: 6, 3: 10, 4: 12, 5: 14 },
+	),
+	reforge: (
+		default: 0,
+		levels: { 1: 5, 2: 10, 3: 15 },
+	),
+	soulbind: (
+		default: 0,
+		levels: { 1: 0, 2: 5 },
+	),
+	forge_expert: (
+		default: (value: 0, bonus: 0),
+		levels: {
+			1: (value: 3, bonus: 3),
+			2: (value: 4, bonus: 3),
+			3: (value: 4, bonus: 4),
+			4: (value: 5, bonus: 5),
+			5: (value: 5, bonus: 5),
+			6: (value: 10, bonus: 5),
+		},
+	),
+	pyroburst: (
+		default: 0,
+		levels: { 1: 12, 2: 18 },
+	),
+
+	// ---------- Alchemy ----------
+
+	overcharge: (
+		default: (amount: 2, mult: 3),
+		levels: {
+			1: (amount: 2, mult: 3),
+			2: (amount: 3, mult: 4),
+		},
+	),
+	fuse: (
+		default: (bonus: 5, gap: 10),
+		levels: {
+			1: (bonus: 5, gap: 10),
+			2: (bonus: 10, gap: 20),
+			3: (bonus: 20, gap: 50),
+			4: (bonus: 30, gap: 80),
+		},
+	),
+	// add: to the highest colour, sub: to the lowest colour
+	ingredients: (
+		default: (add: 4, sub: 0),
+		levels: {
+			1: (add: 4, sub: 0),
+			2: (add: 6, sub: 0),
+			3: (add: 10, sub: -2),
+			4: (add: 15, sub: -3),
+			5: (add: 20, sub: -4),
+			6: (add: 30, sub: -5),
+			7: (add: 50, sub: -7),
+		},
+	),
+	reversal: (
+		default: 1,
+		levels: { 1: 1, 2: 2 },
+	),
+	enchant: (
+		default: (value: 8, debuff: 1),
+		levels: {
+			1: (value: 8, debuff: 1),
+			2: (value: 16, debuff: 1),
+			3: (value: 20, debuff: 1),
+			4: (value: 40, debuff: 2),
+			5: (value: 60, debuff: 3),
+		},
+	),
+	overload: (
+		default: (value: 60, debuff: 1),
+		levels: {
+			1: (value: 60, debuff: 1),
+			2: (value: 100, debuff: 3),
+		},
+	),
+	// add: to the lowest colour (or highest while Overcharged), sub: to the highest colour
+	grind: (
+		default: (add: 3, sub: 0),
+		levels: {
+			1: (add: 3, sub: 0),
+			2: (add: 4, sub: -1),
+			3: (add: 6, sub: -2),
+			4: (add: 8, sub: -3),
+			5: (add: 11, sub: -4),
+			6: (add: 15, sub: -5),
+			7: (add: 20, sub: -6), // A guess, it was buffed
+			8: (add: 35, sub: -7),
+		},
+	),
+)

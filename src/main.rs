@@ -1,91 +1,102 @@
-#[derive(Debug, Clone, Copy)]
-struct Score {
-	pub left: u64,
-	pub right: u64,
-	pub stack: Stack,
+mod card;
+mod deck;
+mod recipe;
+mod score;
+mod tables;
+
+use std::collections::BTreeMap;
+use std::error::Error;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use indicatif::{ProgressBar, ProgressStyle};
+use serde::Deserialize;
+use serde::de::DeserializeOwned;
+
+use card::{Card, CardKind};
+use deck::{Deck, ScoreResults, generate_decks};
+use recipe::{Location, Recipe};
+use tables::CardTables;
+
+/// Random play orders scored per deck to decide whether it's worth a full scoring.
+const SAMPLES_PER_DECK: usize = 15;
+
+/// How many copies of a card may be used, and its current level.
+#[derive(Debug, Clone, Copy, Deserialize)]
+struct Owned {
+	limit: usize,
+	level: u8,
 }
 
-impl Default for Score {
-	fn default() -> Self {
-		Self {
-			left: 1,
-			right: 1,
-			stack: Stack::default(),
+type Inventory = BTreeMap<Location, BTreeMap<CardKind, Owned>>;
+
+fn load<T: DeserializeOwned>(path: &Path) -> Result<T, Box<dyn Error>> {
+	let text = fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+	let value = ron::from_str(&text).map_err(|e| format!("parsing {}: {e}", path.display()))?;
+	Ok(value)
+}
+
+fn available_cards(inventory: &Inventory, location: Location) -> Vec<(Card, usize)> {
+	inventory
+		.get(&location)
+		.into_iter()
+		.flatten()
+		.map(|(&kind, owned)| (Card { kind, level: owned.level }, owned.limit))
+		.collect()
+}
+
+// TODO: Add modes for selecting highest minimum for highest chance at stars, etc.
+fn main() -> Result<(), Box<dyn Error>> {
+	// Data directory defaults to ./data, or pass a path as the first argument
+	let data_dir = std::env::args().nth(1).map_or_else(|| PathBuf::from("data"), PathBuf::from);
+	let tables: CardTables = load(&data_dir.join("cards.ron"))?;
+	let inventory: Inventory = load(&data_dir.join("inventory.ron"))?;
+	let recipes: Vec<Recipe> = load(&data_dir.join("recipes.ron"))?;
+
+	let mut rng = rand::rng();
+	let mut results: Vec<(&Recipe, Deck, ScoreResults)> = Vec::new();
+
+	for recipe in &recipes {
+		let decks = generate_decks(&available_cards(&inventory, recipe.location), recipe.cards);
+		println!("{} has {} unique decks", recipe.name, decks.len());
+
+		let progress = ProgressBar::new(decks.len() as u64)
+			.with_style(ProgressStyle::with_template("{msg}: {wide_bar} {pos}/{len} [{elapsed_precise}<{eta_precise}]")?)
+			.with_message(recipe.name.clone());
+
+		// Only fully score decks whose sample average is at least the best seen so far
+		let mut best_sample = i64::MIN;
+		let mut best: Option<(Deck, ScoreResults)> = None;
+		for deck in decks {
+			progress.inc(1);
+			let sample = deck.sample(&recipe.name, SAMPLES_PER_DECK, &tables, &mut rng);
+			if sample < best_sample {
+				continue;
+			}
+			best_sample = sample;
+			let scored = deck.score(&recipe.name, &tables, &mut rng);
+			// Keep the first deck on ties
+			if best.as_ref().is_none_or(|(_, b)| scored.average() > b.average()) {
+				best = Some((deck, scored));
+			}
+		}
+		progress.finish();
+
+		if let Some((deck, scored)) = best {
+			results.push((recipe, deck, scored));
 		}
 	}
-}
 
-#[derive(Debug, Clone, Copy)]
-struct Stack {
-	// Kitchen has no modifiers
-	// Forge modifiers
-	pub charge_charges: u64,
-	pub multi_forge_amt: u64,
-	pub heat_up_bonus: u64,
-	pub forge_expert_mult: u64,
-	// Alchemy modifiers
-	pub overcharge_amt: u64,
-	pub overcharge_mult: u64,
-	pub reversal: bool,
-	pub reversal_mult: u64,
-	pub enchant_debuff: u64,
-	pub overload_debuff: u64,
-	pub harmonia: bool,
-	pub fuse_bonus: u64,
-	pub fuse_gap: u64,
-}
-
-impl Default for Stack {
-	fn default() -> Self {
-		Self {
-			charge_charges: 0,
-			multi_forge_amt: 0,
-			heat_up_bonus: 0,
-			forge_expert_mult: 1,
-			overcharge_amt: 0,
-			overcharge_mult: 1,
-			reversal: false,
-			reversal_mult: 1,
-			enchant_debuff: 0,
-			overload_debuff: 0,
-			harmonia: false,
-			fuse_bonus: 0,
-			fuse_gap: 0,
-		}
+	for (recipe, deck, result) in results {
+		let stars = |value: i64| "*".repeat(recipe.stars(value));
+		let average = result.average();
+		println!("{}", recipe.name);
+		println!("    Min: {} {}", result.minimum, stars(result.minimum.total()));
+		println!("    Avg: {} {}", average, stars(average));
+		println!("    Max: {} {}", result.maximum, stars(result.maximum.total()));
+		println!("    Cards for Average:");
+		let cards: Vec<String> = deck.cards.iter().map(Card::to_string).collect();
+		println!("      {}", cards.join(", "));
 	}
-}
-
-#[derive(Debug, Clone)]
-struct Recipe {
-	pub name: String,
-	pub location: Location,
-	pub cards: u8,
-	pub stars: Vec<u64>,
-}
-
-impl Recipe {
-	pub fn stars(self, score: u64) -> usize {
-		todo!("Calculate return the first index the provided score is less than the value of self.stars");
-	}
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Location {
-	Kitchen,
-	Alchemy,
-	Forge,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Card {
-	pub name: String,
-	pub level: u8,
-}
-
-trait Scoreable {
-	fn score<T: Scoreable>(self, score: &mut Score, recipe: String, previous: &Vec<T>);
-}
-
-fn main() {
-    println!("Hello, world!");
+	Ok(())
 }
