@@ -18,9 +18,6 @@ use deck::{Deck, ScoreResults, generate_decks};
 use recipe::{Location, Recipe};
 use tables::CardTables;
 
-/// Random play orders scored per deck to decide whether it's worth a full scoring.
-const SAMPLES_PER_DECK: usize = 15;
-
 /// How many copies of a card may be used, and its current level.
 #[derive(Debug, Clone, Copy, Deserialize)]
 struct Owned {
@@ -65,15 +62,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 			.with_message(recipe.name.clone());
 
 		// Only fully score decks whose sample average is at least the best seen so far
-		let mut best_sample = i64::MIN;
 		let mut best: Option<(Deck, ScoreResults)> = None;
 		for deck in decks {
 			progress.inc(1);
-			let sample = deck.sample(&recipe.name, SAMPLES_PER_DECK, &tables, &mut rng);
-			if sample < best_sample {
-				continue;
-			}
-			best_sample = sample;
 			let scored = deck.score(&recipe.name, &tables, &mut rng);
 			// Keep the first deck on ties
 			if best.as_ref().is_none_or(|(_, b)| scored.average() > b.average()) {

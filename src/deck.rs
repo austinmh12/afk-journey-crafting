@@ -1,5 +1,4 @@
 use rand::Rng;
-use rand::seq::SliceRandom;
 
 use crate::card::{Card, CardKind};
 use crate::score::Score;
@@ -48,21 +47,6 @@ pub struct Deck {
 }
 
 impl Deck {
-	/// Scores `samples` random play orders and returns their average.
-	pub fn sample<R: Rng + ?Sized>(&self, recipe: &str, samples: usize, tables: &CardTables, rng: &mut R) -> i64 {
-		let mut order = self.cards.clone();
-		let mut results: Option<ScoreResults> = None;
-		for _ in 0..samples.max(1) {
-			order.shuffle(rng);
-			let score = score_order(&order, recipe, tables, rng);
-			match &mut results {
-				Some(r) => r.push(score),
-				None => results = Some(ScoreResults::new(score)),
-			}
-		}
-		results.map_or(0, |r| r.average())
-	}
-
 	/// Scores every distinct play order of this deck.
 	pub fn score<R: Rng + ?Sized>(&self, recipe: &str, tables: &CardTables, rng: &mut R) -> ScoreResults {
 		let mut order = self.cards.clone();
