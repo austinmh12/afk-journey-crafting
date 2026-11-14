@@ -33,6 +33,8 @@ pub struct Score {
 	pub redistribute: bool,
 	/// Set by Exact Cook: double a random colour once all cards are played.
 	pub post_double: bool,
+	/// Neither colour may drop below this value. 1 for Alchemy, unlimited elsewhere.
+	pub floor: i64,
 }
 
 impl Default for Score {
@@ -43,6 +45,7 @@ impl Default for Score {
 			stack: Stack::default(),
 			redistribute: false,
 			post_double: false,
+			floor: i64::MIN,
 		}
 	}
 }
@@ -66,6 +69,15 @@ impl Score {
 			self.left = avg;
 			self.right = avg;
 		}
+		// Fuse: both colours gain the bonus if they end close enough together
+		if self.stack.fuse_bonus != 0 && (self.left - self.right).abs() < self.stack.fuse_gap {
+			self.add_all(self.stack.fuse_bonus);
+		}
+	}
+
+	fn apply_floor(&mut self) {
+		self.left = self.left.max(self.floor);
+		self.right = self.right.max(self.floor);
 	}
 
 	fn random_side<R: Rng + ?Sized>(&mut self, rng: &mut R) -> &mut i64 {
@@ -82,31 +94,38 @@ impl Score {
 
 	pub fn add_random<R: Rng + ?Sized>(&mut self, value: i64, rng: &mut R) {
 		*self.random_side(rng) += value;
+		self.apply_floor();
 	}
 
 	pub fn add_highest(&mut self, value: i64) {
 		*self.highest_side() += value;
+		self.apply_floor();
 	}
 
 	pub fn add_lowest(&mut self, value: i64) {
 		*self.lowest_side() += value;
+		self.apply_floor();
 	}
 
 	pub fn add_all(&mut self, value: i64) {
 		self.left += value;
 		self.right += value;
+		self.apply_floor();
 	}
 
 	pub fn double_random<R: Rng + ?Sized>(&mut self, rng: &mut R) {
 		*self.random_side(rng) *= 2;
+		self.apply_floor();
 	}
 
 	pub fn double_highest(&mut self) {
 		*self.highest_side() *= 2;
+		self.apply_floor();
 	}
 
 	pub fn double_lowest(&mut self) {
 		*self.lowest_side() *= 2;
+		self.apply_floor();
 	}
 
 	/// A forge hit: hits every colour while Charge has charges left, otherwise a random one.

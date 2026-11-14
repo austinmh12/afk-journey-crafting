@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		let mut best: Option<(Deck, ScoreResults)> = None;
 		for deck in decks {
 			progress.inc(1);
-			let scored = deck.score(&recipe.name, &tables, &mut rng);
+			let scored = deck.score(recipe, &tables, &mut rng);
 			// Keep the first deck on ties
 			if best.as_ref().is_none_or(|(_, b)| scored.average() > b.average()) {
 				best = Some((deck, scored));

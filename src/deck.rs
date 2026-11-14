@@ -1,6 +1,7 @@
 use rand::Rng;
 
 use crate::card::{Card, CardKind};
+use crate::recipe::{Location, Recipe};
 use crate::score::Score;
 use crate::tables::CardTables;
 
@@ -48,7 +49,7 @@ pub struct Deck {
 
 impl Deck {
 	/// Scores every distinct play order of this deck.
-	pub fn score<R: Rng + ?Sized>(&self, recipe: &str, tables: &CardTables, rng: &mut R) -> ScoreResults {
+	pub fn score<R: Rng + ?Sized>(&self, recipe: &Recipe, tables: &CardTables, rng: &mut R) -> ScoreResults {
 		let mut order = self.cards.clone();
 		let mut results = ScoreResults::new(score_order(&order, recipe, tables, rng));
 		while next_permutation(&mut order) {
@@ -73,8 +74,12 @@ fn resolve_banquets(order: &[Card], tables: &CardTables) -> Vec<(Card, u32)> {
 }
 
 /// Plays the cards in `order` and returns the final score.
-pub fn score_order<R: Rng + ?Sized>(order: &[Card], recipe: &str, tables: &CardTables, rng: &mut R) -> Score {
+pub fn score_order<R: Rng + ?Sized>(order: &[Card], recipe: &Recipe, tables: &CardTables, rng: &mut R) -> Score {
 	let mut score = Score::default();
+	if recipe.location == Location::Alchemy {
+		// Alchemy colours can never drop below 1
+		score.floor = 1;
+	}
 	let played = resolve_banquets(order, tables);
 	// Other cards see a Banquet as the card it flipped (e.g. it continues a Cut streak)
 	let cards: Vec<Card> = played.iter().map(|&(card, _)| card).collect();
@@ -85,7 +90,7 @@ pub fn score_order<R: Rng + ?Sized>(order: &[Card], recipe: &str, tables: &CardT
 			_ => &cards[..i],
 		};
 		for _ in 0..flips {
-			card.score(&mut score, recipe, context, tables, rng);
+			card.score(&mut score, &recipe.name, context, tables, rng);
 		}
 	}
 	score.finalize(rng);
@@ -163,9 +168,16 @@ mod tests {
 		ron::from_str(include_str!("../data/cards.ron")).expect("cards.ron should parse")
 	}
 
+	/// Scores cards given as (kind, level) for a recipe at `location`.
+	fn play(location: Location, order: &[(CardKind, u8)]) -> Score {
+		let recipe = Recipe { name: String::new(), location, cards: order.len(), stars: vec![] };
+		let order: Vec<Card> = order.iter().map(|&(kind, level)| Card { kind, level }).collect();
+		score_order(&order, &recipe, &tables(), &mut rand::rng())
+	}
+
 	fn total(order: &[CardKind]) -> i64 {
-		let order: Vec<Card> = order.iter().map(|&kind| card(kind)).collect();
-		score_order(&order, "", &tables(), &mut rand::rng()).total()
+		let order: Vec<(CardKind, u8)> = order.iter().map(|&kind| (kind, 1)).collect();
+		play(Location::Forge, &order).total()
 	}
 
 	#[test]
@@ -181,9 +193,27 @@ mod tests {
 	/// Scores cards given as (kind, level) and returns left + right, which doesn't
 	/// depend on which colour random hits land on. Both colours start at 1.
 	fn points(order: &[(CardKind, u8)]) -> i64 {
-		let order: Vec<Card> = order.iter().map(|&(kind, level)| Card { kind, level }).collect();
-		let score = score_order(&order, "", &tables(), &mut rand::rng());
+		let score = play(Location::Forge, order);
 		score.left + score.right - 2
+	}
+
+	#[test]
+	fn alchemy_colours_never_drop_below_one() {
+		// Ingredients lvl 6: +30 to the highest, -5 to the lowest (1 - 5 floors at 1)
+		let score = play(Location::Alchemy, &[(CardKind::Ingredients, 6)]);
+		assert_eq!((score.left, score.right), (1, 31));
+		// Other locations have no floor
+		let score = play(Location::Kitchen, &[(CardKind::Ingredients, 6)]);
+		assert_eq!((score.left, score.right), (-4, 31));
+	}
+
+	#[test]
+	fn fuse_bonus_needs_small_gap() {
+		use CardKind::*;
+		// Fuse lvl 3 (bonus 20, gap 50): ends at 1x1, gap 0 < 50, so both colours +20
+		assert_eq!(play(Location::Alchemy, &[(Fuse, 3)]).total(), 21 * 21);
+		// Fuse lvl 1 (bonus 5, gap 10): Overload lvl 2 makes it 1x101, gap 100, no bonus
+		assert_eq!(play(Location::Alchemy, &[(Fuse, 1), (Overload, 2)]).total(), 101);
 	}
 
 	#[test]
