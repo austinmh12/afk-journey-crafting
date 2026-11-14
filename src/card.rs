@@ -17,6 +17,7 @@ pub enum CardKind {
 	Ferment,
 	Bake,
 	ExactCook,
+	Banquet,
 	// Forge
 	Forge,
 	Charge,
@@ -52,6 +53,7 @@ impl CardKind {
 			Self::Ferment => "Ferment",
 			Self::Bake => "Bake",
 			Self::ExactCook => "Exact Cook",
+			Self::Banquet => "Banquet",
 			Self::Forge => "Forge",
 			Self::Charge => "Charge",
 			Self::Sharpening => "Sharpening",
@@ -185,6 +187,9 @@ impl Card {
 				}
 			}
 			CardKind::Ferment => {} // Only boosts Heat Control
+			// Replaced by the card it flips before scoring (see `deck::score_order`).
+			// Only reached when Banquet is played first, with nothing to flip.
+			CardKind::Banquet => {}
 			CardKind::Bake => {
 				score.add_random(tables.bake.get(level), rng);
 				score.redistribute = true;

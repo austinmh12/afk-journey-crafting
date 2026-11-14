@@ -67,6 +67,7 @@ pub struct CardTables {
 	pub slow_cook: Table<i64>,
 	pub bake: Table<i64>,
 	pub exact_cook: Table<u32>,
+	pub banquet: Table<u32>,
 	// Forge
 	pub forge: Table<i64>,
 	pub charge: Table<ChargeValues>,

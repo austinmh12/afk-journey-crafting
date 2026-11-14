@@ -10,6 +10,7 @@
 		Ferment: (limit: 2, level: 2),
 		Bake: (limit: 1, level: 2),
 		ExactCook: (limit: 1, level: 1),
+		Banquet: (limit: 1, level: 1),
 	},
 	Forge: {
 		Forge: (limit: 3, level: 6),

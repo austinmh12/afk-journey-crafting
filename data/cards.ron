@@ -37,10 +37,11 @@
 		default: 1,
 		levels: { 1: 1, 2: 2 },
 	),
+	// Times the previous card is flipped again
 	banquet: (
 		default: 1,
 		levels: { 1: 1 },
-	)
+	),
 
 	// ---------- Forge ----------
 

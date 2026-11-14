@@ -58,16 +58,35 @@ impl Deck {
 	}
 }
 
+/// Replaces each Banquet with the card it flips (the card before it), paired with
+/// how many times that card is flipped. Banquet after Banquet flips the same card again.
+fn resolve_banquets(order: &[Card], tables: &CardTables) -> Vec<(Card, u32)> {
+	let mut played: Vec<(Card, u32)> = Vec::with_capacity(order.len());
+	for &card in order {
+		let flip = match (card.kind, played.last()) {
+			(CardKind::Banquet, Some(&(last, _))) => (last, tables.banquet.get(card.level)),
+			_ => (card, 1),
+		};
+		played.push(flip);
+	}
+	played
+}
+
 /// Plays the cards in `order` and returns the final score.
 pub fn score_order<R: Rng + ?Sized>(order: &[Card], recipe: &str, tables: &CardTables, rng: &mut R) -> Score {
 	let mut score = Score::default();
-	for (i, card) in order.iter().enumerate() {
+	let played = resolve_banquets(order, tables);
+	// Other cards see a Banquet as the card it flipped (e.g. it continues a Cut streak)
+	let cards: Vec<Card> = played.iter().map(|&(card, _)| card).collect();
+	for (i, &(card, flips)) in played.iter().enumerate() {
 		let context = match card.kind {
-			CardKind::ExactCook => order,
-			CardKind::Sharpening => &order[i + 1..],
-			_ => &order[..i],
+			CardKind::ExactCook => &cards[..],
+			CardKind::Sharpening => &cards[i + 1..],
+			_ => &cards[..i],
 		};
-		card.score(&mut score, recipe, context, tables, rng);
+		for _ in 0..flips {
+			card.score(&mut score, recipe, context, tables, rng);
+		}
 	}
 	score.finalize(rng);
 	score
@@ -138,6 +157,25 @@ mod tests {
 
 	fn card(kind: CardKind) -> Card {
 		Card { kind, level: 1 }
+	}
+
+	fn tables() -> CardTables {
+		ron::from_str(include_str!("../data/cards.ron")).expect("cards.ron should parse")
+	}
+
+	fn total(order: &[CardKind]) -> i64 {
+		let order: Vec<Card> = order.iter().map(|&kind| card(kind)).collect();
+		score_order(&order, "", &tables(), &mut rand::rng()).total()
+	}
+
+	#[test]
+	fn banquet_flips_previous_card() {
+		// Reforge lvl 1 adds 5 to both colours: 1 + 5 + 5 = 11
+		assert_eq!(total(&[CardKind::Reforge, CardKind::Banquet]), 11 * 11);
+		// A second Banquet flips the same card again
+		assert_eq!(total(&[CardKind::Reforge, CardKind::Banquet, CardKind::Banquet]), 16 * 16);
+		// Nothing to flip when played first
+		assert_eq!(total(&[CardKind::Banquet, CardKind::Reforge]), 6 * 6);
 	}
 
 	#[test]
