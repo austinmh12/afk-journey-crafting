@@ -178,6 +178,45 @@ mod tests {
 		assert_eq!(total(&[CardKind::Banquet, CardKind::Reforge]), 6 * 6);
 	}
 
+	/// Scores cards given as (kind, level) and returns left + right, which doesn't
+	/// depend on which colour random hits land on. Both colours start at 1.
+	fn points(order: &[(CardKind, u8)]) -> i64 {
+		let order: Vec<Card> = order.iter().map(|&(kind, level)| Card { kind, level }).collect();
+		let score = score_order(&order, "", &tables(), &mut rand::rng());
+		score.left + score.right - 2
+	}
+
+	#[test]
+	fn soulbind_uses_earlier_enhancements() {
+		use CardKind::*;
+		// Flipped first: lvl 1 base value is 0
+		assert_eq!(points(&[(Soulbind, 1)]), 0);
+		// Heat Up lvl 4 sets the bonus to 12, Soulbind scores 12, Forge lvl 6 scores 15 + 12
+		assert_eq!(points(&[(HeatUp, 4), (Soulbind, 1), (Forge, 6)]), 12 + 27);
+		// Two Heat Ups stack to 24
+		assert_eq!(points(&[(HeatUp, 4), (HeatUp, 4), (Soulbind, 1)]), 24);
+		// Forge Expert lvl 5 scores 5 (mult 0) and raises the mult to 1; Soulbind gets 5 * 1
+		assert_eq!(points(&[(ForgeExpert, 5), (Soulbind, 1)]), 5 + 5);
+		// Soulbind doesn't raise the mult: the next Forge Expert still gets 5 + 5 * 1
+		assert_eq!(points(&[(ForgeExpert, 5), (Soulbind, 1), (ForgeExpert, 5)]), 5 + 5 + 10);
+		// Charge makes Soulbind lvl 2 (base 5) hit both colours
+		assert_eq!(points(&[(Charge, 3), (Soulbind, 2)]), 10);
+		// Multi-Forge lvl 1 queues 2 extra hits for Soulbind, which uses them up
+		assert_eq!(points(&[(MultiForge, 1), (Soulbind, 2), (Forge, 1)]), 5 * 3 + 1);
+		// Forge uses up both Multi-Forges (4 extra hits); Soulbind refreshes them to 4
+		assert_eq!(points(&[(MultiForge, 1), (MultiForge, 1), (Forge, 6), (Soulbind, 2)]), 15 * 5 + 5 * 5);
+		// Forge uses up Charge lvl 1's single charge; Soulbind refreshes it and hits both colours
+		assert_eq!(points(&[(Charge, 1), (Forge, 1), (Soulbind, 2)]), 2 + 10);
+	}
+
+	#[test]
+	fn soulbind_matches_in_game_examples() {
+		use CardKind::*;
+		// Multi-Forge lvl 2 queues 3 hits; Forge Expert lvl 5 is value 5, bonus 5
+		assert_eq!(points(&[(MultiForge, 2), (ForgeExpert, 5), (Soulbind, 1)]), 130);
+		assert_eq!(points(&[(ForgeExpert, 5), (MultiForge, 2), (Soulbind, 1)]), 25);
+	}
+
 	#[test]
 	fn permutations_skip_duplicates() {
 		let mut v = vec![1, 1, 2, 3];

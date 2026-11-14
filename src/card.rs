@@ -239,19 +239,30 @@ impl Card {
 				score.stack.multi_forge_amt += tables.multi_forge.get(level);
 			}
 			CardKind::HeatUp => {
-				// Believed to be permanent
-				score.stack.heat_up_bonus = tables.heat_up.get(level);
+				// Permanent, and stacks with other Heat Ups
+				score.stack.heat_up_bonus += tables.heat_up.get(level);
 			}
 			CardKind::Reforge => score.add_all(tables.reforge.get(level)),
 			CardKind::Soulbind => {
-				// TODO: add the Heat Up bonus to this value
-				score.add_random(tables.soulbind.get(level), rng);
-				// Retriggers earlier enhancing cards
-				// TODO: also include the Forge Expert bonuses
-				for card in context {
-					if matches!(card.kind, CardKind::Charge | CardKind::HeatUp | CardKind::MultiForge) {
-						card.score(score, recipe, context, tables, rng);
-					}
+				// Gets every enhancement from earlier cards: the Heat Up bonus and the
+				// current Forge Expert bonus (without raising either), and it refreshes
+				// Charge and Multi-Forge before using them up like a forge hit
+				let multi_forges: Vec<&Card> = context.iter().filter(|c| c.kind == CardKind::MultiForge).collect();
+				if !multi_forges.is_empty() {
+					score.stack.multi_forge_amt = multi_forges.iter().map(|c| tables.multi_forge.get(c.level)).sum();
+				}
+				if let Some(charge) = context.iter().rev().find(|c| c.kind == CardKind::Charge) {
+					score.stack.charge_charges = tables.charge.get(charge.level).charges;
+				}
+				let forge_expert_bonus = context
+					.iter()
+					.find(|c| c.kind == CardKind::ForgeExpert)
+					.map_or(0, |c| tables.forge_expert.get(c.level).bonus * score.stack.forge_expert_mult);
+				let value = tables.soulbind.get(level) + score.stack.heat_up_bonus + forge_expert_bonus;
+				score.forge_hit(value, rng);
+				while score.stack.multi_forge_amt > 0 {
+					score.forge_hit(value, rng);
+					score.stack.multi_forge_amt -= 1;
 				}
 			}
 			CardKind::ForgeExpert => {
