@@ -34,9 +34,13 @@
 	),
 	// Repeats needed in a row to double at the end
 	exact_cook: (
-		default: 3,
+		default: 1,
 		levels: { 1: 1, 2: 2 },
 	),
+	banquet: (
+		default: 1,
+		levels: { 1: 1 },
+	)
 
 	// ---------- Forge ----------
 
