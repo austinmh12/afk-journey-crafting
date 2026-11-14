@@ -95,6 +95,38 @@ impl fmt::Display for Card {
 /// Heat Control can retrigger at most this many times from its 50% chance.
 const HEAT_CONTROL_RETRIGGER_LIMIT: u32 = 7;
 
+/// Recipe power: every artisan card (Forge, Forge Expert, Pyroburst) gets Pyroburst's repeat check.
+const PROTECTIVE_PICK_HAMMER: &str = "Protective Pick Hammer";
+
+/// Reveals an artisan card: one forge hit plus one per queued Multi-Forge hit,
+/// each worth `hit_value`, which is called once per hit.
+///
+/// With `repeat_check`, two or more active boosts (Heat Up bonus, Charge
+/// charges, queued Multi-Forge hits) when the card is revealed give 2 extra hits.
+fn artisan_reveal<R: Rng + ?Sized>(
+	score: &mut Score,
+	repeat_check: bool,
+	rng: &mut R,
+	mut hit_value: impl FnMut(&mut Score) -> i64,
+) {
+	let boosts = u32::from(score.stack.heat_up_bonus != 0)
+		+ u32::from(score.stack.charge_charges != 0)
+		+ u32::from(score.stack.multi_forge_amt != 0);
+	let value = hit_value(score);
+	score.forge_hit(value, rng);
+	while score.stack.multi_forge_amt > 0 {
+		let value = hit_value(score);
+		score.forge_hit(value, rng);
+		score.stack.multi_forge_amt -= 1;
+	}
+	if repeat_check && boosts >= 2 {
+		for _ in 0..2 {
+			let value = hit_value(score);
+			score.forge_hit(value, rng);
+		}
+	}
+}
+
 impl Card {
 	/// Adds this card's effect to `score`.
 	///
@@ -216,11 +248,8 @@ impl Card {
 			// ---------- Forge ----------
 			CardKind::Forge => {
 				let value = tables.forge.get(level) + score.stack.heat_up_bonus;
-				score.forge_hit(value, rng);
-				while score.stack.multi_forge_amt > 0 {
-					score.forge_hit(value, rng);
-					score.stack.multi_forge_amt -= 1;
-				}
+				let repeat = recipe == PROTECTIVE_PICK_HAMMER;
+				artisan_reveal(score, repeat, rng, |_| value);
 			}
 			CardKind::Charge => {
 				let charge = tables.charge.get(level);
@@ -268,34 +297,17 @@ impl Card {
 			CardKind::ForgeExpert => {
 				let expert = tables.forge_expert.get(level);
 				let value = expert.value + score.stack.heat_up_bonus;
-				// Each hit, including Multi-Forge hits, grows the bonus multiplier
-				score.forge_hit(value + expert.bonus * score.stack.forge_expert_mult, rng);
-				score.stack.forge_expert_mult += 1;
-				while score.stack.multi_forge_amt > 0 {
-					score.forge_hit(value + expert.bonus * score.stack.forge_expert_mult, rng);
-					score.stack.multi_forge_amt -= 1;
+				let repeat = recipe == PROTECTIVE_PICK_HAMMER;
+				// Every hit, including Multi-Forge and repeat hits, grows the bonus multiplier
+				artisan_reveal(score, repeat, rng, |score| {
+					let hit = value + expert.bonus * score.stack.forge_expert_mult;
 					score.stack.forge_expert_mult += 1;
-				}
+					hit
+				});
 			}
 			CardKind::Pyroburst => {
 				let value = tables.pyroburst.get(level) + score.stack.heat_up_bonus;
-				// Two or more active boosts (Heat Up, Charge, Multi-Forge) give 2 extra hits
-				let mut boosts = u32::from(score.stack.heat_up_bonus != 0);
-				if score.stack.charge_charges != 0 {
-					boosts += 1;
-				}
-				score.forge_hit(value, rng);
-				if score.stack.multi_forge_amt != 0 {
-					boosts += 1;
-				}
-				while score.stack.multi_forge_amt > 0 {
-					score.forge_hit(value, rng);
-					score.stack.multi_forge_amt -= 1;
-				}
-				if boosts >= 2 {
-					score.forge_hit(value, rng);
-					score.forge_hit(value, rng);
-				}
+				artisan_reveal(score, true, rng, |_| value);
 			}
 			CardKind::Ignite => score.double_random(rng),
 

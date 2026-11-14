@@ -170,7 +170,11 @@ mod tests {
 
 	/// Scores cards given as (kind, level) for a recipe at `location`.
 	fn play(location: Location, order: &[(CardKind, u8)]) -> Score {
-		let recipe = Recipe { name: String::new(), location, cards: order.len(), stars: vec![] };
+		play_recipe("", location, order)
+	}
+
+	fn play_recipe(name: &str, location: Location, order: &[(CardKind, u8)]) -> Score {
+		let recipe = Recipe { name: name.to_string(), location, cards: order.len(), stars: vec![] };
 		let order: Vec<Card> = order.iter().map(|&(kind, level)| Card { kind, level }).collect();
 		score_order(&order, &recipe, &tables(), &mut rand::rng())
 	}
@@ -195,6 +199,26 @@ mod tests {
 	fn points(order: &[(CardKind, u8)]) -> i64 {
 		let score = play(Location::Forge, order);
 		score.left + score.right - 2
+	}
+
+	#[test]
+	fn protective_pick_hammer_repeats_artisan_cards() {
+		use CardKind::*;
+		let pph = |order: &[(CardKind, u8)]| {
+			let score = play_recipe("Protective Pick Hammer", Location::Forge, order);
+			score.left + score.right - 2
+		};
+		// Heat Up lvl 4 (+12) and Charge lvl 3 (every hit hits both colours) are 2 boosts
+		// Forge lvl 6: 3 hits of 15 + 12 on both colours
+		assert_eq!(pph(&[(HeatUp, 4), (Charge, 3), (Forge, 6)]), 27 * 3 * 2);
+		assert_eq!(points(&[(HeatUp, 4), (Charge, 3), (Forge, 6)]), 27 * 2);
+		// Forge Expert lvl 5: value 5 + 12, bonus 5 growing with each of the 3 hits
+		assert_eq!(pph(&[(HeatUp, 4), (Charge, 3), (ForgeExpert, 5)]), (17 + 22 + 27) * 2);
+		assert_eq!(points(&[(HeatUp, 4), (Charge, 3), (ForgeExpert, 5)]), 17 * 2);
+		// Only 1 boost: no repeat
+		assert_eq!(pph(&[(Charge, 3), (Forge, 6)]), 15 * 2);
+		// Pyroburst lvl 1 (12 + 12) repeats in every recipe
+		assert_eq!(points(&[(HeatUp, 4), (Charge, 3), (Pyroburst, 1)]), 24 * 3 * 2);
 	}
 
 	#[test]
