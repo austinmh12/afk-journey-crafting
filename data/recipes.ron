@@ -32,12 +32,27 @@
 	(name: "Copper Carver", location: Forge, cards: 3, stars: [6, 8]),
 	(name: "Copper Mask", location: Forge, cards: 4, stars: [15, 30]),
 	(name: "Fine Carver", location: Forge, cards: 5, stars: [32, 100]),
-	(name: "Pick Hammer", location: Forge, cards: 6, stars: [1110, 4640, 20000, 91500]),
-	(name: "Protective Pick Hammer", location: Forge, cards: 6, stars: [1650, 9894, 33666, 129234]),
-	(name: "Herb Tray", location: Forge, cards: 7, stars: [234, 11100, 30100, 97000]),
-	(name: "Mithril Mortar", location: Forge, cards: 5, stars: [450, 6570, 16800, 37200]),
-	(name: "Thermo Chest", location: Forge, cards: 6, stars: [1250, 4490, 24000, 51000]),
+	// Power: 30% chance for Forge Expert to trigger an extra time
+	(name: "Copper Stewpot", location: Forge, cards: 5, stars: [240, 425, 666, 1050]),
+	// Power: First Forge card affects all colors
+	(name: "Carved Box", location: Forge, cards: 4, stars: [100, 133, 180, 261]),
+	(name: "Chillguard Armor", location: Forge, cards: 6, stars: [220, 550, 750, 1075]),
+	(name: "Stone Armor", location: Forge, cards: 7, stars: [1100, 1915, 2670, 3510]),
+	// Power: +3 to all colors if artisan card effects triggered at least 6 times at end of production
+	(name: "Warm Stone Armor", location: Forge, cards: 7, stars: [1000, 3860, 7000, 11000]),
+	(name: "Flameguard Plate", location: Forge, cards: 8, stars: [3480, 10500, 20530, 44500]),
+	// Power: 30% chance for Forge Expert to trigger an extra time
+	(name: "Firefang Sword", location: Forge, cards: 8, stars: [6940, 22800, 49945, 77000]),
+	// Power: First 3 Forge cards affect all colors
+	(name: "Fireproof Helm", location: Forge, cards: 8, stars: [6600, 20200, 40400, 51300]),
 	(name: "Iron Mixing Dish", location: Forge, cards: 7, stars: [1490, 11800, 26700, 49000]),
+	(name: "Thermo Chest", location: Forge, cards: 6, stars: [1250, 4490, 24000, 51000]),
+	(name: "Mithril Mortar", location: Forge, cards: 5, stars: [450, 6570, 16800, 37200]),
+	(name: "Herb Tray", location: Forge, cards: 7, stars: [234, 11100, 30100, 97000]),
+	// Power: Cards enhanced by at least 2 other cards trigger an extra time
+	(name: "Protective Pick Hammer", location: Forge, cards: 6, stars: [1650, 9894, 33666, 129234]),
+	(name: "Pick Hammer", location: Forge, cards: 6, stars: [1110, 4640, 20000, 91500]),
+	(name: "Frost Dagger", location: Forge, cards: 5, stars: [486, 7650, 27300, 58300]),
 
 	// ----------- Alchemy --------------
 	(name: "Repellent Sachet", location: Alchemy, cards: 7, stars: [5280, 11800, 21200, 53000]),
