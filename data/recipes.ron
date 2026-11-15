@@ -55,5 +55,32 @@
 	(name: "Frost Dagger", location: Forge, cards: 5, stars: [486, 7650, 27300, 58300]),
 
 	// ----------- Alchemy --------------
+	(name: "Growth Serum", location: Alchemy, cards: 3, stars: [12, 32]),
+	(name: "Magic Arrow", location: Alchemy, cards: 5, stars: [162, 220, 270]),
+	(name: "Calming Bouquet", location: Alchemy, cards: 6, stars: [240, 340, 460, 650]),
+	// Power: +3 to highest color for each card flip
+	(name: "Calming Warmdust", location: Alchemy, cards: 7, stars: [1080, 1800, 2180, 2860]),
+	// Power: +1 to lowest color for each card flip
+	(name: "Warmdust", location: Alchemy, cards: 7, stars: [920, 1230, 1600, 2070]),
+	// Power: Grind cards trigger 1 extra time
+	(name: "Warming Incense", location: Alchemy, cards: 6, stars: [1025, 1400, 1650, 2180]),
+	// Power: Ingredient cards trigger 1 extra time
+	(name: "Calmwind Incense", location: Alchemy, cards: 6, stars: [700, 1890, 2470, 3720]),
+	// Power: +3 to highest color for each card flip
+	(name: "Soothing Tonic", location: Alchemy, cards: 8, stars: [3290, 4300, 5625, 7000]),
+	// Power: +1 to lowest color for each card flip
+	(name: "Illusion Potion", location: Alchemy, cards: 8, stars: [2220, 3300, 4700, 5570]),
+	// Power: +15 to random color at the start of production
+	(name: "Fireward Ring", location: Alchemy, cards: 9, stars: [6200, 8000, 10200, 12120]),
+	(name: "Refind Illusion Potion", location: Alchemy, cards: 7, stars: [3530, 5150, 6640, 10900]),
+	(name: "Earth Essence", location: Alchemy, cards: 6, stars: [2980, 4550, 6120, 10000]),
+	(name: "Extraction Flask", location: Alchemy, cards: 7, stars: [4460, 6270, 8230, 13200]),
+	(name: "Basic Antidote", location: Alchemy, cards: 7, stars: [2120, 4500, 8030, 20300]),
+	// Power: Any effects on highest color are doubled
+	(name: "Earth Antidote", location: Alchemy, cards: 8, stars: [6130, 28351, 47100, 107477]),
+	(name: "Compound Antidote", location: Alchemy, cards: 6, stars: [4100, 7660, 10900, 26000]),
 	(name: "Repellent Sachet", location: Alchemy, cards: 7, stars: [5280, 11800, 21200, 53000]),
+	// Power: Doubles lowest color at end of production if highest color is more than 3x the lowest color.
+	(name: "Frost Antidote", location: Alchemy, cards: 6, stars: [2450, 11600, 35800, 133000]),
+	(name: "Bottled Blizzard", location: Alchemy, cards: 6, stars: [5100, 13000, 23300, 66500]),
 ]
