@@ -1,11 +1,34 @@
 // Recipes to calculate. `stars` are the score thresholds for each star, ascending.
 // Uncomment a recipe to include it in the run.
 [
-	(name: "Roasted Corn", location: Kitchen, cards: 5, stars: [2030, 5190, 8250, 14300]),
-	(name: "Cool Candied Skewer", location: Kitchen, cards: 6, stars: [5570, 12800, 20400, 30000]),
-	(name: "Healthy Candied Skewer", location: Kitchen, cards: 6, stars: [2400, 6560, 11200, 21600]),
-	(name: "Popcorn", location: Kitchen, cards: 5, stars: [2080, 5290, 8640, 15200]),
+	// ---------- Kitchen ------------
+	(name: "Round Bread", location: Kitchen, cards: 3, stars: [6, 8]),
+	(name: "Flatbread", location: Kitchen, cards: 4, stars: [25, 60]),
+	(name: "Toast", location: Kitchen, cards: 5, stars: [70, 160]),
+	(name: "Spice Bread", location: Kitchen, cards: 5, stars: [112, 255, 560]),
+	(name: "Grape Vinegar", location: Kitchen, cards: 6, stars: [320, 610, 1090, 1740]),
+	// Power: Cutting always yields max points
+	(name: "Salted Raisin", location: Kitchen, cards: 4, stars: [117, 170, 289, 525]),
+	(name: "Spice Dry Fruit", location: Kitchen, cards: 7, stars: [810, 1375, 1980, 3480]),
+	(name: "Salted Dry Fruit", location: Kitchen, cards: 5, stars: [350, 675, 1015, 1715]),
+	(name: "Shroom Stir-Fry", location: Kitchen, cards: 6, stars: [715, 1400, 2150, 3570]),
+	// Power: +3 to all colors if Heat Control triggers at least 7 times at the end of production
+	(name: "Dried Mushroom", location: Kitchen, cards: 5, stars: [675, 1520, 2560, 5260]),
+	(name: "Pinkroot Stew", location: Kitchen, cards: 7, stars: [3530, 7650, 11440, 20700]),
+	// Power: +5 to all colors if final point gap is less than 5
+	(name: "Odd Sweet", location: Kitchen, cards: 8, stars: [6600, 13110, 20050, 32900]),
+	(name: "Crispy Blackroot", location: Kitchen, cards: 7, stars: [5920, 13800, 21100, 36200]),
+	(name: "Salted Corn Chips", location: Kitchen, cards: 5, stars: [1810, 4620, 7380, 12300]),
 	(name: "Earthy Flatbread", location: Kitchen, cards: 6, stars: [3950, 9630, 15100, 26500]),
+	(name: "Popcorn", location: Kitchen, cards: 5, stars: [2080, 5290, 8640, 15200]),
+	// Power: Cut always affects lowest color
+	(name: "Roasted Corn", location: Kitchen, cards: 5, stars: [2030, 5190, 8250, 14300]),
+	// Power: Lowers highest color to match lowest color at end of production
+	(name: "Healthy Candied Skewer", location: Kitchen, cards: 6, stars: [2400, 6560, 11200, 21600]),
+	(name: "Cool Candied Skewer", location: Kitchen, cards: 6, stars: [5570, 12800, 20400, 30000]),
+	(name: "Shaved Ice", location: Kitchen, cards: 7, stars: [4610, 19900, 31400, 71900]),
+
+	// ---------- Forge -------------
 	(name: "Copper Carver", location: Forge, cards: 3, stars: [6, 8]),
 	(name: "Copper Mask", location: Forge, cards: 4, stars: [15, 30]),
 	(name: "Fine Carver", location: Forge, cards: 5, stars: [32, 100]),
@@ -15,5 +38,7 @@
 	(name: "Mithril Mortar", location: Forge, cards: 5, stars: [450, 6570, 16800, 37200]),
 	(name: "Thermo Chest", location: Forge, cards: 6, stars: [1250, 4490, 24000, 51000]),
 	(name: "Iron Mixing Dish", location: Forge, cards: 7, stars: [1490, 11800, 26700, 49000]),
+
+	// ----------- Alchemy --------------
 	(name: "Repellent Sachet", location: Alchemy, cards: 7, stars: [5280, 11800, 21200, 53000]),
 ]
