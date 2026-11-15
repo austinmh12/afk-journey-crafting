@@ -1,7 +1,7 @@
 use rand::Rng;
 
 use crate::card::{Card, CardKind};
-use crate::recipe::{Location, Recipe};
+use crate::recipe::Recipe;
 use crate::score::Score;
 use crate::tables::CardTables;
 
@@ -75,11 +75,7 @@ fn resolve_banquets(order: &[Card], tables: &CardTables) -> Vec<(Card, u32)> {
 
 /// Plays the cards in `order` and returns the final score.
 pub fn score_order<R: Rng + ?Sized>(order: &[Card], recipe: &Recipe, tables: &CardTables, rng: &mut R) -> Score {
-	let mut score = Score::default();
-	if recipe.location == Location::Alchemy {
-		// Alchemy colours can never drop below 1
-		score.floor = 1;
-	}
+	let mut score = recipe.start_score(rng);
 	let played = resolve_banquets(order, tables);
 	// Other cards see a Banquet as the card it flipped (e.g. it continues a Cut streak)
 	let cards: Vec<Card> = played.iter().map(|&(card, _)| card).collect();
@@ -89,9 +85,10 @@ pub fn score_order<R: Rng + ?Sized>(order: &[Card], recipe: &Recipe, tables: &Ca
 			CardKind::Sharpening => &cards[i + 1..],
 			_ => &cards[..i],
 		};
-		for _ in 0..flips {
+		for _ in 0..flips * recipe.triggers(card.kind) {
 			card.score(&mut score, &recipe.name, context, tables, rng);
 		}
+		recipe.apply_flip_power(&mut score);
 	}
 	score.finalize(rng);
 	recipe.apply_end_power(&mut score);
@@ -160,7 +157,7 @@ fn next_permutation<T: Ord>(v: &mut [T]) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::recipe::powers;
+	use crate::recipe::{Location, powers};
 
 	fn card(kind: CardKind) -> Card {
 		Card { kind, level: 1 }
@@ -304,6 +301,49 @@ mod tests {
 		let score = play_recipe(powers::WARM_STONE_ARMOR, Location::Forge, &order);
 		assert_eq!(score.artisan_triggers, 7);
 		assert_eq!(score.left + score.right - 2, 15 * 7 + 3 * 2);
+	}
+
+	/// Scores an Alchemy recipe and returns its colours as (lowest, highest).
+	fn alchemy(recipe: &str, order: &[(CardKind, u8)]) -> (i64, i64) {
+		let score = play_recipe(recipe, Location::Alchemy, order);
+		(score.left.min(score.right), score.left.max(score.right))
+	}
+
+	#[test]
+	fn alchemy_flip_powers() {
+		use CardKind::*;
+		// Distill doubles the highest colour, then the power applies
+		// +3 to highest: 1x1 -> 1x2 -> 1x5 -> 1x10 -> 1x13
+		assert_eq!(alchemy(powers::CALMING_WARMDUST, &[(Distill, 1), (Distill, 1)]), (1, 13));
+		assert_eq!(alchemy(powers::SOOTHING_TONIC, &[(Distill, 1), (Distill, 1)]), (1, 13));
+		// +1 to lowest: 1x1 -> 1x2 -> 2x2 -> 2x4 -> 3x4
+		assert_eq!(alchemy(powers::WARMDUST, &[(Distill, 1), (Distill, 1)]), (3, 4));
+		assert_eq!(alchemy(powers::ILLUSION_POTION, &[(Distill, 1), (Distill, 1)]), (3, 4));
+	}
+
+	#[test]
+	fn alchemy_extra_trigger_powers() {
+		use CardKind::*;
+		// Grind lvl 8: -7 to highest (floored at 1), then +35 to lowest; twice
+		assert_eq!(alchemy(powers::WARMING_INCENSE, &[(Grind, 8)]), (29, 36));
+		assert_eq!(alchemy("", &[(Grind, 8)]), (1, 36));
+		// Ingredients lvl 6: +30 to highest, -5 to lowest (floored at 1); twice
+		assert_eq!(alchemy(powers::CALMWIND_INCENSE, &[(Ingredients, 6)]), (1, 61));
+		assert_eq!(alchemy("", &[(Ingredients, 6)]), (1, 31));
+	}
+
+	#[test]
+	fn alchemy_start_and_end_powers() {
+		use CardKind::*;
+		// Fireward Ring: +15 to a random colour before any card
+		assert_eq!(alchemy(powers::FIREWARD_RING, &[]), (1, 16));
+		// Earth Antidote: effects on the highest colour apply twice
+		assert_eq!(alchemy(powers::EARTH_ANTIDOTE, &[(Overload, 2)]), (1, 201));
+		assert_eq!(alchemy(powers::EARTH_ANTIDOTE, &[(Distill, 1)]), (1, 4));
+		assert_eq!(alchemy(powers::EARTH_ANTIDOTE, &[(Ingredients, 6)]), (1, 61));
+		// Frost Antidote: 1x101 has highest > 3x lowest, so the lowest doubles
+		assert_eq!(alchemy(powers::FROST_ANTIDOTE, &[(Overload, 2)]), (2, 101));
+		assert_eq!(alchemy(powers::FROST_ANTIDOTE, &[(Distill, 1)]), (1, 2));
 	}
 
 	#[test]

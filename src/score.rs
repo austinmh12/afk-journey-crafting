@@ -39,6 +39,8 @@ pub struct Score {
 	pub heat_control_triggers: u32,
 	/// Hits from artisan cards (Forge, Forge Expert, Pyroburst), including extra hits.
 	pub artisan_triggers: u32,
+	/// Times every effect on the highest colour is applied. 2 for Earth Antidote.
+	pub highest_repeats: u32,
 }
 
 impl Default for Score {
@@ -52,6 +54,7 @@ impl Default for Score {
 			floor: i64::MIN,
 			heat_control_triggers: 0,
 			artisan_triggers: 0,
+			highest_repeats: 1,
 		}
 	}
 }
@@ -105,7 +108,7 @@ impl Score {
 	}
 
 	pub fn add_highest(&mut self, value: i64) {
-		*self.highest_side() += value;
+		*self.highest_side() += value * i64::from(self.highest_repeats);
 		self.apply_floor();
 	}
 
@@ -126,7 +129,7 @@ impl Score {
 	}
 
 	pub fn double_highest(&mut self) {
-		*self.highest_side() *= 2;
+		*self.highest_side() *= 1 << self.highest_repeats;
 		self.apply_floor();
 	}
 
