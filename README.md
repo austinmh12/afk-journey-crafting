@@ -6,9 +6,11 @@ For each recipe, the calculator:
 
 1. Builds every distinct deck of the recipe's card count from your inventory for that location (Kitchen, Forge or Alchemy), using each card no more times than your limit allows.
 2. Scores every distinct play order of each deck, applying card effects (Charge, Multi-Forge, Heat Up, Reversal, Banquet and so on) and the recipe's power, if it has one.
-3. Reports the deck with the highest **average** score across its play orders, along with that deck's minimum and maximum, and the stars each one earns.
+3. Reports the deck with the highest **average** score across its play orders, along with that deck's minimum and maximum, and the stars each one earns. This is because I prioritize regularly getting stars rather than going for the highest value possible.
 
 Decks are scored in parallel across all CPU cores.
+
+A big thanks to [@MatsuTaku's](https://github.com/MatsuTaku) as they had a lot of the data that made it possible to score earlier levels of cards. They made a tool here: [AFK Journey Techcard Optimizer](https://github.com/MatsuTaku/afkjourney-techcard-optimizer). Though slightly outdated, the information is still good for early to mid-level homesteads.
 
 ## Requirements
 
@@ -149,3 +151,8 @@ Run the tests with `cargo test`.
 - Some card values in `cards.ron` are guesses or placeholders, marked `TODO` or `A guess`. This is because the AFK Journey wiki does not contain this information, nor can you view the previous levels in the game, only the current and next levels. A lot of the values I found prior to my levels are from [@MatsuTaku's](https://github.com/MatsuTaku) [AFK Journey Techcard Optimizer](https://github.com/MatsuTaku/afkjourney-techcard-optimizer), some of which were outdated to do patches.
 - Facility level limits are not modelled. Set `limit` and `level` in `inventory.ron` to what your facility currently allows. This is a plan to do, [@MatsuTaku's](https://github.com/MatsuTaku) repo has some of this info. Once parsed into a format for this script, I'll update the command line args to allow for location levels
 - Cards with random effects (Heat Control, Cut, random-colour hits) are scored once per distinct play order, so a deck with few distinct orders, such as three copies of one card, gets few random samples.
+
+## Roadmap Items
+
+- Add different scoring modes such as the highest scoring deck for a recipe or the lowest scoring, etc.
+- Add a front end web page with [Yew](https://yew.rs/) to allow for easier visualization of the decks being scored and an easier interface for users to input their current inventory
