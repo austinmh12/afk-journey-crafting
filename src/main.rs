@@ -12,6 +12,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
@@ -97,7 +98,6 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
 		recipes.iter().collect()
 	};
 
-	let mut rng = rand::rng();
 	let mut results: Vec<(&Recipe, Deck, ScoreResults)> = Vec::new();
 
 	for recipe in selected {
@@ -108,18 +108,23 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
 			.with_style(ProgressStyle::with_template("{msg}: {wide_bar} {pos}/{len} [{elapsed_precise}<{eta_precise}]")?)
 			.with_message(recipe.name.clone());
 
-		let mut best: Option<(Deck, ScoreResults)> = None;
-		for deck in decks {
-			progress.inc(1);
-			let scored = deck.score(recipe, &tables, &mut rng);
-			// Keep the first deck on ties
-			if best.as_ref().is_none_or(|(_, b)| scored.average() > b.average()) {
-				best = Some((deck, scored));
-			}
-		}
+		// Score decks in parallel, each worker thread with its own RNG
+		let best = decks
+			.into_par_iter()
+			.enumerate()
+			.map_init(rand::rng, |rng, (index, deck)| {
+				let scored = deck.score(recipe, &tables, rng);
+				progress.inc(1);
+				(index, deck, scored)
+			})
+			// Highest average wins; on ties keep the earliest deck, as a sequential run would
+			.reduce_with(|a, b| {
+				let (a_avg, b_avg) = (a.2.average(), b.2.average());
+				if b_avg > a_avg || (b_avg == a_avg && b.0 < a.0) { b } else { a }
+			});
 		progress.finish();
 
-		if let Some((deck, scored)) = best {
+		if let Some((_, deck, scored)) = best {
 			results.push((recipe, deck, scored));
 		}
 	}
