@@ -94,6 +94,7 @@ pub fn score_order<R: Rng + ?Sized>(order: &[Card], recipe: &Recipe, tables: &Ca
 		}
 	}
 	score.finalize(rng);
+	recipe.apply_end_power(&mut score);
 	score
 }
 
@@ -159,6 +160,7 @@ fn next_permutation<T: Ord>(v: &mut [T]) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::recipe::powers;
 
 	fn card(kind: CardKind) -> Card {
 		Card { kind, level: 1 }
@@ -199,6 +201,40 @@ mod tests {
 	fn points(order: &[(CardKind, u8)]) -> i64 {
 		let score = play(Location::Forge, order);
 		score.left + score.right - 2
+	}
+
+	#[test]
+	fn dried_mushroom_rewards_seven_heat_control_triggers() {
+		use CardKind::*;
+		let check = |order: &[(CardKind, u8)]| {
+			let score = play_recipe(powers::DRIED_MUSHROOM, Location::Kitchen, order);
+			let triggers = i64::from(score.heat_control_triggers);
+			// Heat Control lvl 1 adds 3 per trigger, then +3 to both colours at 7+
+			let bonus = if triggers >= 7 { 3 * 2 } else { 0 };
+			assert_eq!(score.left + score.right - 2, 3 * triggers + bonus);
+			triggers
+		};
+		// 3 Ferment lvl 2 give 6 extra triggers: always at least 7
+		assert!(check(&[(Ferment, 2), (Ferment, 2), (Ferment, 2), (HeatControl, 1)]) >= 7);
+		// Retriggers alone may or may not reach 7
+		check(&[(HeatControl, 1)]);
+	}
+
+	#[test]
+	fn odd_sweet_rewards_small_final_gap() {
+		use CardKind::*;
+		// Slow Cook lvl 2 adds 2 to both: 3x3, gap 0, so both +5
+		assert_eq!(play_recipe(powers::ODD_SWEET, Location::Kitchen, &[(SlowCook, 2)]).total(), 8 * 8);
+		// Overload lvl 2 makes it 1x101: gap too big
+		assert_eq!(play_recipe(powers::ODD_SWEET, Location::Kitchen, &[(Overload, 2)]).total(), 101);
+	}
+
+	#[test]
+	fn healthy_candied_skewer_lowers_highest_colour() {
+		use CardKind::*;
+		// Overload lvl 2 makes it 1x101, then the 101 drops to 1
+		let score = play_recipe(powers::HEALTHY_CANDIED_SKEWER, Location::Kitchen, &[(Overload, 2)]);
+		assert_eq!((score.left, score.right), (1, 1));
 	}
 
 	#[test]

@@ -1,5 +1,23 @@
 use serde::Deserialize;
 
+use crate::score::Score;
+
+/// Names of recipes with special powers.
+pub mod powers {
+	/// Cut always yields its max points.
+	pub const SALTED_RAISIN: &str = "Salted Raisin";
+	/// Cut always hits the lowest colour.
+	pub const ROASTED_CORN: &str = "Roasted Corn";
+	/// +3 to all colours at the end if Heat Control triggered at least 7 times.
+	pub const DRIED_MUSHROOM: &str = "Dried Mushroom";
+	/// +5 to all colours at the end if the gap between colours is less than 5.
+	pub const ODD_SWEET: &str = "Odd Sweet";
+	/// At the end, the highest colour is lowered to match the lowest.
+	pub const HEALTHY_CANDIED_SKEWER: &str = "Healthy Candied Skewer";
+	/// Every artisan card (Forge, Forge Expert, Pyroburst) gets Pyroburst's repeat check.
+	pub const PROTECTIVE_PICK_HAMMER: &str = "Protective Pick Hammer";
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
 pub enum Location {
 	Kitchen,
@@ -21,6 +39,21 @@ impl Recipe {
 	/// Number of stars the given score earns.
 	pub fn stars(&self, score: i64) -> usize {
 		self.stars.partition_point(|&threshold| threshold <= score)
+	}
+
+	/// Applies this recipe's end-of-production power, if it has one. Runs after the
+	/// cards' own end effects (Exact Cook, Bake, Fuse).
+	pub fn apply_end_power(&self, score: &mut Score) {
+		match self.name.as_str() {
+			powers::DRIED_MUSHROOM if score.heat_control_triggers >= 7 => score.add_all(3),
+			powers::ODD_SWEET if (score.left - score.right).abs() < 5 => score.add_all(5),
+			powers::HEALTHY_CANDIED_SKEWER => {
+				let lowest = score.lowest();
+				score.left = lowest;
+				score.right = lowest;
+			}
+			_ => {}
+		}
 	}
 }
 

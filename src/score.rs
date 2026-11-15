@@ -35,6 +35,8 @@ pub struct Score {
 	pub post_double: bool,
 	/// Neither colour may drop below this value. 1 for Alchemy, unlimited elsewhere.
 	pub floor: i64,
+	/// Times Heat Control has added points, including Ferment and chance retriggers.
+	pub heat_control_triggers: u32,
 }
 
 impl Default for Score {
@@ -46,6 +48,7 @@ impl Default for Score {
 			redistribute: false,
 			post_double: false,
 			floor: i64::MIN,
+			heat_control_triggers: 0,
 		}
 	}
 }
@@ -59,7 +62,8 @@ impl Score {
 		self.left * self.right
 	}
 
-	/// Applies the end-of-craft effects. Call once after the last card is scored.
+	/// Applies the cards' end-of-craft effects. Call once after the last card is scored,
+	/// before the recipe's power (see `Recipe::apply_end_power`).
 	pub fn finalize<R: Rng + ?Sized>(&mut self, rng: &mut R) {
 		if self.post_double {
 			self.double_random(rng);

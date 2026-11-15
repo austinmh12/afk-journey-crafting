@@ -3,6 +3,7 @@ use std::fmt;
 use rand::{Rng, RngExt};
 use serde::Deserialize;
 
+use crate::recipe::powers;
 use crate::score::Score;
 use crate::tables::{AddSub, CardTables};
 
@@ -92,12 +93,6 @@ impl fmt::Display for Card {
 	}
 }
 
-/// Heat Control can retrigger at most this many times from its 50% chance.
-const HEAT_CONTROL_RETRIGGER_LIMIT: u32 = 7;
-
-/// Recipe power: every artisan card (Forge, Forge Expert, Pyroburst) gets Pyroburst's repeat check.
-const PROTECTIVE_PICK_HAMMER: &str = "Protective Pick Hammer";
-
 /// Reveals an artisan card: one forge hit plus one per queued Multi-Forge hit,
 /// each worth `hit_value`, which is called once per hit.
 ///
@@ -146,14 +141,12 @@ impl Card {
 			CardKind::Cut => {
 				let range = tables.cut.get(level);
 				let hit = |score: &mut Score, rng: &mut R| {
-					// Salted Raisin power: cut always rolls its max value
-					let value = if recipe == "Salted Raisin" {
+					let value = if recipe == powers::SALTED_RAISIN {
 						range.max
 					} else {
 						rng.random_range(range.min..=range.max)
 					};
-					// Roasted Corn power: cut always hits the lowest colour
-					if recipe == "Roasted Corn" {
+					if recipe == powers::ROASTED_CORN {
 						score.add_lowest(value);
 					} else {
 						score.add_random(value, rng);
@@ -174,6 +167,7 @@ impl Card {
 			CardKind::HeatControl => {
 				let value = tables.heat_control.get(level);
 				score.add_random(value, rng);
+				score.heat_control_triggers += 1;
 
 				// Slow Cook triggers when Heat Control flips, and at lvl 4 and below
 				// also on every Heat Control retrigger
@@ -186,19 +180,19 @@ impl Card {
 				let ferment_level = ferments.first().map_or(0, |c| c.level);
 				for _ in 0..ferments.len() * usize::from(ferment_level) {
 					score.add_random(value, rng);
+					score.heat_control_triggers += 1;
 					if slow_cook_level < 5 {
 						slow_cook_triggers += 1;
 					}
 				}
 
-				// 50% chance to keep retriggering
-				let mut limit = HEAT_CONTROL_RETRIGGER_LIMIT;
-				while rng.random::<f64>() >= 0.5 && limit > 0 {
+				// 50% chance to keep retriggering, with no limit
+				while rng.random::<f64>() >= 0.5 {
 					score.add_random(value, rng);
+					score.heat_control_triggers += 1;
 					if slow_cook_level < 5 {
 						slow_cook_triggers += 1;
 					}
-					limit -= 1;
 				}
 
 				for slow_cook in slow_cooks {
@@ -248,7 +242,7 @@ impl Card {
 			// ---------- Forge ----------
 			CardKind::Forge => {
 				let value = tables.forge.get(level) + score.stack.heat_up_bonus;
-				let repeat = recipe == PROTECTIVE_PICK_HAMMER;
+				let repeat = recipe == powers::PROTECTIVE_PICK_HAMMER;
 				artisan_reveal(score, repeat, rng, |_| value);
 			}
 			CardKind::Charge => {
@@ -297,7 +291,7 @@ impl Card {
 			CardKind::ForgeExpert => {
 				let expert = tables.forge_expert.get(level);
 				let value = expert.value + score.stack.heat_up_bonus;
-				let repeat = recipe == PROTECTIVE_PICK_HAMMER;
+				let repeat = recipe == powers::PROTECTIVE_PICK_HAMMER;
 				// Every hit, including Multi-Forge and repeat hits, grows the bonus multiplier
 				artisan_reveal(score, repeat, rng, |score| {
 					let hit = value + expert.bonus * score.stack.forge_expert_mult;
