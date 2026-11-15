@@ -48,7 +48,7 @@ pub mod powers {
 	pub const FROST_ANTIDOTE: &str = "Frost Antidote";
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, clap::ValueEnum)]
 pub enum Location {
 	Kitchen,
 	Forge,
