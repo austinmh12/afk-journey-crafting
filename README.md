@@ -146,6 +146,6 @@ Run the tests with `cargo test`.
 
 ## Limitations
 
-- Some card values in `cards.ron` are guesses or placeholders, marked `TODO` or `A guess`.
-- Facility level limits are not modelled. Set `limit` and `level` in `inventory.ron` to what your facility currently allows.
+- Some card values in `cards.ron` are guesses or placeholders, marked `TODO` or `A guess`. This is because the AFK Journey wiki does not contain this information, nor can you view the previous levels in the game, only the current and next levels. A lot of the values I found prior to my levels are from [@MatsuTaku's](https://github.com/MatsuTaku) [AFK Journey Techcard Optimizer](https://github.com/MatsuTaku/afkjourney-techcard-optimizer), some of which were outdated to do patches.
+- Facility level limits are not modelled. Set `limit` and `level` in `inventory.ron` to what your facility currently allows. This is a plan to do, [@MatsuTaku's](https://github.com/MatsuTaku) repo has some of this info. Once parsed into a format for this script, I'll update the command line args to allow for location levels
 - Cards with random effects (Heat Control, Cut, random-colour hits) are scored once per distinct play order, so a deck with few distinct orders, such as three copies of one card, gets few random samples.
