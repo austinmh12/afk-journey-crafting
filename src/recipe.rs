@@ -14,7 +14,17 @@ pub mod powers {
 	pub const ODD_SWEET: &str = "Odd Sweet";
 	/// At the end, the highest colour is lowered to match the lowest.
 	pub const HEALTHY_CANDIED_SKEWER: &str = "Healthy Candied Skewer";
-	/// Every artisan card (Forge, Forge Expert, Pyroburst) gets Pyroburst's repeat check.
+	/// Forge Expert has a 30% chance to trigger 1 extra time.
+	pub const COPPER_STEWPOT: &str = "Copper Stewpot";
+	/// The first Forge card hits every colour.
+	pub const CARVED_BOX: &str = "Carved Box";
+	/// +3 to all colours at the end if artisan cards triggered at least 6 times.
+	pub const WARM_STONE_ARMOR: &str = "Warm Stone Armor";
+	/// Forge Expert has a 30% chance to trigger 1 extra time.
+	pub const FIREFANG_SWORD: &str = "Firefang Sword";
+	/// The first 3 Forge cards hit every colour.
+	pub const FIREPROOF_HELM: &str = "Fireproof Helm";
+	/// Forge, Forge Expert, Pyroburst and Soulbind flip again if enhanced by at least 2 other cards.
 	pub const PROTECTIVE_PICK_HAMMER: &str = "Protective Pick Hammer";
 }
 
@@ -46,6 +56,7 @@ impl Recipe {
 	pub fn apply_end_power(&self, score: &mut Score) {
 		match self.name.as_str() {
 			powers::DRIED_MUSHROOM if score.heat_control_triggers >= 7 => score.add_all(3),
+			powers::WARM_STONE_ARMOR if score.artisan_triggers >= 6 => score.add_all(3),
 			powers::ODD_SWEET if (score.left - score.right).abs() < 5 => score.add_all(5),
 			powers::HEALTHY_CANDIED_SKEWER => {
 				let lowest = score.lowest();

@@ -37,6 +37,8 @@ pub struct Score {
 	pub floor: i64,
 	/// Times Heat Control has added points, including Ferment and chance retriggers.
 	pub heat_control_triggers: u32,
+	/// Hits from artisan cards (Forge, Forge Expert, Pyroburst), including extra hits.
+	pub artisan_triggers: u32,
 }
 
 impl Default for Score {
@@ -49,6 +51,7 @@ impl Default for Score {
 			post_double: false,
 			floor: i64::MIN,
 			heat_control_triggers: 0,
+			artisan_triggers: 0,
 		}
 	}
 }

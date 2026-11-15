@@ -93,36 +93,123 @@ impl fmt::Display for Card {
 	}
 }
 
-/// Reveals an artisan card: one forge hit plus one per queued Multi-Forge hit,
-/// each worth `hit_value`, which is called once per hit.
+/// Reveals an artisan card (Forge, Forge Expert, Pyroburst): one forge hit plus
+/// one per queued Multi-Forge hit, then any extra hits from Pyroburst or the
+/// recipe's power. `hit_value` is called once per hit to get its value.
 ///
-/// With `repeat_check`, two or more active boosts (Heat Up bonus, Charge
-/// charges, queued Multi-Forge hits) when the card is revealed give 2 extra hits.
+/// Returns whether the card was enhanced by 2 or more other cards.
 fn artisan_reveal<R: Rng + ?Sized>(
 	score: &mut Score,
-	repeat_check: bool,
+	kind: CardKind,
+	recipe: &str,
+	context: &[Card],
 	rng: &mut R,
 	mut hit_value: impl FnMut(&mut Score) -> i64,
-) {
-	let boosts = u32::from(score.stack.heat_up_bonus != 0)
+) -> bool {
+	// Enhanced by 2+ cards: Heat Up bonus, Charge charges, queued Multi-Forge hits
+	let enhanced = u32::from(score.stack.heat_up_bonus != 0)
 		+ u32::from(score.stack.charge_charges != 0)
-		+ u32::from(score.stack.multi_forge_amt != 0);
-	let value = hit_value(score);
-	score.forge_hit(value, rng);
-	while score.stack.multi_forge_amt > 0 {
-		let value = hit_value(score);
-		score.forge_hit(value, rng);
-		score.stack.multi_forge_amt -= 1;
+		+ u32::from(score.stack.multi_forge_amt != 0)
+		>= 2;
+	let mut extra_hits = if enhanced && kind == CardKind::Pyroburst { 2 } else { 0 };
+	if kind == CardKind::ForgeExpert
+		&& (recipe == powers::COPPER_STEWPOT || recipe == powers::FIREFANG_SWORD)
+		&& rng.random::<f64>() < 0.3
+	{
+		extra_hits += 1;
 	}
-	if repeat_check && boosts >= 2 {
-		for _ in 0..2 {
-			let value = hit_value(score);
+
+	// Recipe powers that make the first Forge cards hit every colour
+	let forges_before = context.iter().filter(|c| c.kind == CardKind::Forge).count();
+	let all_colours = kind == CardKind::Forge
+		&& ((recipe == powers::CARVED_BOX && forges_before < 1)
+			|| (recipe == powers::FIREPROOF_HELM && forges_before < 3));
+
+	let mut hit = |score: &mut Score, rng: &mut R| {
+		let value = hit_value(score);
+		if all_colours {
+			// Doesn't need or use up a Charge charge
+			score.add_all(value);
+		} else {
 			score.forge_hit(value, rng);
 		}
+		score.artisan_triggers += 1;
+	};
+
+	hit(score, rng);
+	while score.stack.multi_forge_amt > 0 {
+		hit(score, rng);
+		score.stack.multi_forge_amt -= 1;
 	}
+	for _ in 0..extra_hits {
+		hit(score, rng);
+	}
+	enhanced
 }
 
 impl Card {
+	/// Flips Forge, Forge Expert, Pyroburst or Soulbind once. Returns whether the
+	/// card was enhanced by 2 or more other cards.
+	fn forge_flip<R: Rng + ?Sized>(
+		&self,
+		score: &mut Score,
+		recipe: &str,
+		context: &[Card],
+		tables: &CardTables,
+		rng: &mut R,
+	) -> bool {
+		let level = self.level;
+		match self.kind {
+			CardKind::Forge => {
+				let value = tables.forge.get(level) + score.stack.heat_up_bonus;
+				artisan_reveal(score, self.kind, recipe, context, rng, |_| value)
+			}
+			CardKind::ForgeExpert => {
+				let expert = tables.forge_expert.get(level);
+				let value = expert.value + score.stack.heat_up_bonus;
+				// Every hit, including Multi-Forge and extra hits, grows the bonus multiplier
+				artisan_reveal(score, self.kind, recipe, context, rng, |score| {
+					let hit = value + expert.bonus * score.stack.forge_expert_mult;
+					score.stack.forge_expert_mult += 1;
+					hit
+				})
+			}
+			CardKind::Pyroburst => {
+				let value = tables.pyroburst.get(level) + score.stack.heat_up_bonus;
+				artisan_reveal(score, self.kind, recipe, context, rng, |_| value)
+			}
+			CardKind::Soulbind => {
+				// Gets every enhancement from earlier cards: the Heat Up bonus and the
+				// current Forge Expert bonus (without raising either), and it refreshes
+				// Charge and Multi-Forge before using them up like a forge hit
+				let multi_forges: Vec<&Card> = context.iter().filter(|c| c.kind == CardKind::MultiForge).collect();
+				if !multi_forges.is_empty() {
+					score.stack.multi_forge_amt = multi_forges.iter().map(|c| tables.multi_forge.get(c.level)).sum();
+				}
+				if let Some(charge) = context.iter().rev().find(|c| c.kind == CardKind::Charge) {
+					score.stack.charge_charges = tables.charge.get(charge.level).charges;
+				}
+				let forge_expert_bonus = context
+					.iter()
+					.find(|c| c.kind == CardKind::ForgeExpert)
+					.map_or(0, |c| tables.forge_expert.get(c.level).bonus * score.stack.forge_expert_mult);
+				let enhanced = u32::from(score.stack.heat_up_bonus != 0)
+					+ u32::from(score.stack.charge_charges != 0)
+					+ u32::from(score.stack.multi_forge_amt != 0)
+					+ u32::from(forge_expert_bonus != 0)
+					>= 2;
+				let value = tables.soulbind.get(level) + score.stack.heat_up_bonus + forge_expert_bonus;
+				score.forge_hit(value, rng);
+				while score.stack.multi_forge_amt > 0 {
+					score.forge_hit(value, rng);
+					score.stack.multi_forge_amt -= 1;
+				}
+				enhanced
+			}
+			_ => false,
+		}
+	}
+
 	/// Adds this card's effect to `score`.
 	///
 	/// `context` is normally the cards played before this one. Exact Cook receives
@@ -240,10 +327,13 @@ impl Card {
 			}
 
 			// ---------- Forge ----------
-			CardKind::Forge => {
-				let value = tables.forge.get(level) + score.stack.heat_up_bonus;
-				let repeat = recipe == powers::PROTECTIVE_PICK_HAMMER;
-				artisan_reveal(score, repeat, rng, |_| value);
+			CardKind::Forge | CardKind::ForgeExpert | CardKind::Pyroburst | CardKind::Soulbind => {
+				let enhanced = self.forge_flip(score, recipe, context, tables, rng);
+				// Protective Pick Hammer: a card enhanced by 2+ other cards flips again,
+				// re-checking its enhancements as if flipped for the first time
+				if enhanced && recipe == powers::PROTECTIVE_PICK_HAMMER {
+					self.forge_flip(score, recipe, context, tables, rng);
+				}
 			}
 			CardKind::Charge => {
 				let charge = tables.charge.get(level);
@@ -266,43 +356,6 @@ impl Card {
 				score.stack.heat_up_bonus += tables.heat_up.get(level);
 			}
 			CardKind::Reforge => score.add_all(tables.reforge.get(level)),
-			CardKind::Soulbind => {
-				// Gets every enhancement from earlier cards: the Heat Up bonus and the
-				// current Forge Expert bonus (without raising either), and it refreshes
-				// Charge and Multi-Forge before using them up like a forge hit
-				let multi_forges: Vec<&Card> = context.iter().filter(|c| c.kind == CardKind::MultiForge).collect();
-				if !multi_forges.is_empty() {
-					score.stack.multi_forge_amt = multi_forges.iter().map(|c| tables.multi_forge.get(c.level)).sum();
-				}
-				if let Some(charge) = context.iter().rev().find(|c| c.kind == CardKind::Charge) {
-					score.stack.charge_charges = tables.charge.get(charge.level).charges;
-				}
-				let forge_expert_bonus = context
-					.iter()
-					.find(|c| c.kind == CardKind::ForgeExpert)
-					.map_or(0, |c| tables.forge_expert.get(c.level).bonus * score.stack.forge_expert_mult);
-				let value = tables.soulbind.get(level) + score.stack.heat_up_bonus + forge_expert_bonus;
-				score.forge_hit(value, rng);
-				while score.stack.multi_forge_amt > 0 {
-					score.forge_hit(value, rng);
-					score.stack.multi_forge_amt -= 1;
-				}
-			}
-			CardKind::ForgeExpert => {
-				let expert = tables.forge_expert.get(level);
-				let value = expert.value + score.stack.heat_up_bonus;
-				let repeat = recipe == powers::PROTECTIVE_PICK_HAMMER;
-				// Every hit, including Multi-Forge and repeat hits, grows the bonus multiplier
-				artisan_reveal(score, repeat, rng, |score| {
-					let hit = value + expert.bonus * score.stack.forge_expert_mult;
-					score.stack.forge_expert_mult += 1;
-					hit
-				});
-			}
-			CardKind::Pyroburst => {
-				let value = tables.pyroburst.get(level) + score.stack.heat_up_bonus;
-				artisan_reveal(score, true, rng, |_| value);
-			}
 			CardKind::Ignite => score.double_random(rng),
 
 			// ---------- Alchemy ----------

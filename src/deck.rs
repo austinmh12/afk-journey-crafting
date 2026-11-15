@@ -237,24 +237,73 @@ mod tests {
 		assert_eq!((score.left, score.right), (1, 1));
 	}
 
+	/// Scores a Forge recipe with a power and returns left + right minus the starting 2.
+	fn forge_points(recipe: &str, order: &[(CardKind, u8)]) -> i64 {
+		let score = play_recipe(recipe, Location::Forge, order);
+		score.left + score.right - 2
+	}
+
 	#[test]
-	fn protective_pick_hammer_repeats_artisan_cards() {
+	fn protective_pick_hammer_flips_enhanced_cards_again() {
 		use CardKind::*;
-		let pph = |order: &[(CardKind, u8)]| {
-			let score = play_recipe("Protective Pick Hammer", Location::Forge, order);
-			score.left + score.right - 2
-		};
+		let pph = |order: &[(CardKind, u8)]| forge_points(powers::PROTECTIVE_PICK_HAMMER, order);
 		// Heat Up lvl 4 (+12) and Charge lvl 3 (every hit hits both colours) are 2 boosts
-		// Forge lvl 6: 3 hits of 15 + 12 on both colours
-		assert_eq!(pph(&[(HeatUp, 4), (Charge, 3), (Forge, 6)]), 27 * 3 * 2);
+		// Forge lvl 6: flips twice for 15 + 12 on both colours
+		assert_eq!(pph(&[(HeatUp, 4), (Charge, 3), (Forge, 6)]), 27 * 2 * 2);
 		assert_eq!(points(&[(HeatUp, 4), (Charge, 3), (Forge, 6)]), 27 * 2);
-		// Forge Expert lvl 5: value 5 + 12, bonus 5 growing with each of the 3 hits
-		assert_eq!(pph(&[(HeatUp, 4), (Charge, 3), (ForgeExpert, 5)]), (17 + 22 + 27) * 2);
+		// Forge Expert lvl 5: value 5 + 12, bonus 5 growing with each hit
+		assert_eq!(pph(&[(HeatUp, 4), (Charge, 3), (ForgeExpert, 5)]), (17 + 22) * 2);
 		assert_eq!(points(&[(HeatUp, 4), (Charge, 3), (ForgeExpert, 5)]), 17 * 2);
-		// Only 1 boost: no repeat
+		// Only 1 boost: no second flip
 		assert_eq!(pph(&[(Charge, 3), (Forge, 6)]), 15 * 2);
-		// Pyroburst lvl 1 (12 + 12) repeats in every recipe
+		// Pyroburst lvl 1 (12 + 12) hits 3 times per flip: 6 in total
+		assert_eq!(pph(&[(HeatUp, 4), (Charge, 3), (Pyroburst, 1)]), 24 * 6 * 2);
 		assert_eq!(points(&[(HeatUp, 4), (Charge, 3), (Pyroburst, 1)]), 24 * 3 * 2);
+		// Charge lvl 1 has 1 charge: the first flip uses it (both colours, then 2 extra
+		// single hits), so the second flip has only Heat Up and doesn't get Pyroburst's extras
+		assert_eq!(pph(&[(HeatUp, 4), (Charge, 1), (Pyroburst, 1)]), 24 * 2 + 24 * 2 + 24);
+		// Soulbind lvl 1 is covered too: 12 from Heat Up on both colours, twice
+		assert_eq!(pph(&[(HeatUp, 4), (Charge, 3), (Soulbind, 1)]), 12 * 2 * 2);
+		assert_eq!(points(&[(HeatUp, 4), (Charge, 3), (Soulbind, 1)]), 12 * 2);
+		// Each Soulbind flip refreshes Multi-Forge lvl 1 to 2 queued hits: 3 hits per flip
+		assert_eq!(pph(&[(MultiForge, 1), (HeatUp, 4), (Soulbind, 1)]), 12 * 3 * 2);
+	}
+
+	#[test]
+	fn forge_expert_may_trigger_again_in_stewpot_and_firefang() {
+		use CardKind::*;
+		for recipe in [powers::COPPER_STEWPOT, powers::FIREFANG_SWORD] {
+			// Forge Expert lvl 5 scores 5, or 5 + 10 with the extra trigger (30%)
+			let results: Vec<i64> = (0..200).map(|_| forge_points(recipe, &[(ForgeExpert, 5)])).collect();
+			assert!(results.iter().all(|&p| p == 5 || p == 15));
+			assert!(results.contains(&5) && results.contains(&15));
+		}
+		assert_eq!(points(&[(ForgeExpert, 5)]), 5);
+	}
+
+	#[test]
+	fn first_forge_cards_hit_all_colours() {
+		use CardKind::*;
+		// Forge lvl 6 scores 15: on both colours, or on one
+		assert_eq!(forge_points(powers::CARVED_BOX, &[(Forge, 6), (Forge, 6)]), 30 + 15);
+		assert_eq!(forge_points(powers::FIREPROOF_HELM, &[(Forge, 6); 4]), 30 * 3 + 15);
+		assert_eq!(points(&[(Forge, 6), (Forge, 6)]), 15 + 15);
+		// The power doesn't use up Charge lvl 1's single charge; the second Forge does
+		assert_eq!(forge_points(powers::CARVED_BOX, &[(Charge, 1), (Forge, 6), (Forge, 6)]), 30 + 30);
+	}
+
+	#[test]
+	fn warm_stone_armor_rewards_six_artisan_triggers() {
+		use CardKind::*;
+		// Multi-Forge lvl 2 queues 3 hits: Forge lvl 6 triggers 4 times, no bonus
+		let score = play_recipe(powers::WARM_STONE_ARMOR, Location::Forge, &[(MultiForge, 2), (Forge, 6)]);
+		assert_eq!(score.artisan_triggers, 4);
+		assert_eq!(score.left + score.right - 2, 15 * 4);
+		// Two Multi-Forges: 7 triggers, so both colours +3
+		let order = [(MultiForge, 2), (MultiForge, 2), (Forge, 6)];
+		let score = play_recipe(powers::WARM_STONE_ARMOR, Location::Forge, &order);
+		assert_eq!(score.artisan_triggers, 7);
+		assert_eq!(score.left + score.right - 2, 15 * 7 + 3 * 2);
 	}
 
 	#[test]
