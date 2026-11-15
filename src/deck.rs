@@ -59,29 +59,43 @@ impl Deck {
 	}
 }
 
-/// Replaces each Banquet with the card it flips (the card before it), paired with
-/// how many times that card is flipped. Banquet after Banquet flips the same card again.
-fn resolve_banquets(order: &[Card], tables: &CardTables) -> Vec<(Card, u32)> {
-	let mut played: Vec<(Card, u32)> = Vec::with_capacity(order.len());
+/// Replaces each Banquet with the card it flips (the card before it), and returns
+/// how many times each card is flipped. Banquet after Banquet flips the same card again.
+fn resolve_banquets(order: &[Card], tables: &CardTables) -> (Vec<Card>, Vec<u32>) {
+	let mut cards: Vec<Card> = Vec::with_capacity(order.len());
+	let mut flips: Vec<u32> = Vec::with_capacity(order.len());
 	for &card in order {
-		let flip = match (card.kind, played.last()) {
-			(CardKind::Banquet, Some(&(last, _))) => (last, tables.banquet.get(card.level)),
-			_ => (card, 1),
-		};
-		played.push(flip);
+		match (card.kind, cards.last()) {
+			(CardKind::Banquet, Some(&last)) => {
+				cards.push(last);
+				flips.push(tables.banquet.get(card.level));
+			}
+			_ => {
+				cards.push(card);
+				flips.push(1);
+			}
+		}
 	}
-	played
+	(cards, flips)
 }
 
 /// Plays the cards in `order` and returns the final score.
 pub fn score_order<R: Rng + ?Sized>(order: &[Card], recipe: &Recipe, tables: &CardTables, rng: &mut R) -> Score {
 	let mut score = recipe.start_score(rng);
-	let played = resolve_banquets(order, tables);
-	// Other cards see a Banquet as the card it flipped (e.g. it continues a Cut streak)
-	let cards: Vec<Card> = played.iter().map(|&(card, _)| card).collect();
-	for (i, &(card, flips)) in played.iter().enumerate() {
+	// Other cards see a Banquet as the card it flipped (e.g. it continues a Cut streak).
+	// Most play orders have no Banquet, so only build the swapped order when needed.
+	let resolved;
+	let (cards, flips): (&[Card], &[u32]) = if order.iter().any(|c| c.kind == CardKind::Banquet) {
+		resolved = resolve_banquets(order, tables);
+		(&resolved.0, &resolved.1)
+	} else {
+		(order, &[])
+	};
+	for (i, &card) in cards.iter().enumerate() {
+		// Without Banquets every card flips once
+		let flips = flips.get(i).copied().unwrap_or(1);
 		let context = match card.kind {
-			CardKind::ExactCook => &cards[..],
+			CardKind::ExactCook => cards,
 			CardKind::Sharpening => &cards[i + 1..],
 			_ => &cards[..i],
 		};

@@ -182,9 +182,9 @@ impl Card {
 				// Gets every enhancement from earlier cards: the Heat Up bonus and the
 				// current Forge Expert bonus (without raising either), and it refreshes
 				// Charge and Multi-Forge before using them up like a forge hit
-				let multi_forges: Vec<&Card> = context.iter().filter(|c| c.kind == CardKind::MultiForge).collect();
-				if !multi_forges.is_empty() {
-					score.stack.multi_forge_amt = multi_forges.iter().map(|c| tables.multi_forge.get(c.level)).sum();
+				let mut multi_forges = context.iter().filter(|c| c.kind == CardKind::MultiForge).peekable();
+				if multi_forges.peek().is_some() {
+					score.stack.multi_forge_amt = multi_forges.map(|c| tables.multi_forge.get(c.level)).sum();
 				}
 				if let Some(charge) = context.iter().rev().find(|c| c.kind == CardKind::Charge) {
 					score.stack.charge_charges = tables.charge.get(charge.level).charges;
@@ -258,14 +258,15 @@ impl Card {
 
 				// Slow Cook triggers when Heat Control flips, and at lvl 4 and below
 				// also on every Heat Control retrigger
-				let slow_cooks: Vec<&Card> = context.iter().filter(|c| c.kind == CardKind::SlowCook).collect();
-				let slow_cook_level = slow_cooks.first().map_or(0, |c| c.level);
-				let mut slow_cook_triggers = u32::from(!slow_cooks.is_empty());
+				let slow_cooks = || context.iter().filter(|c| c.kind == CardKind::SlowCook);
+				let slow_cook_level = slow_cooks().next().map_or(0, |c| c.level);
+				let mut slow_cook_triggers = u32::from(slow_cooks().next().is_some());
 
 				// Each Ferment makes Heat Control trigger extra times based on its level
-				let ferments: Vec<&Card> = context.iter().filter(|c| c.kind == CardKind::Ferment).collect();
-				let ferment_level = ferments.first().map_or(0, |c| c.level);
-				for _ in 0..ferments.len() * usize::from(ferment_level) {
+				let mut ferments = context.iter().filter(|c| c.kind == CardKind::Ferment);
+				let ferment_level = ferments.next().map_or(0, |c| c.level);
+				let ferment_count = usize::from(ferment_level > 0) + ferments.count();
+				for _ in 0..ferment_count * usize::from(ferment_level) {
 					score.add_random(value, rng);
 					score.heat_control_triggers += 1;
 					if slow_cook_level < 5 {
@@ -282,7 +283,7 @@ impl Card {
 					}
 				}
 
-				for slow_cook in slow_cooks {
+				for slow_cook in slow_cooks() {
 					for _ in 0..slow_cook_triggers {
 						// Recipe and context don't affect Slow Cook
 						slow_cook.score(score, "", &[], tables, rng);
