@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::card::{Card, CardKind};
 use crate::facility::{Cap, Facilities};
-use crate::recipe::Location;
+use crate::recipe::{Location, Recipe};
 
 /// How many copies of a card may be used, and its current level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +39,12 @@ impl Facility {
 		self.level.map_or_else(Cap::default, |level| facilities.cap(location, level, kind))
 	}
 
+	/// Whether `recipe` is unlocked at this facility's level. Every recipe is
+	/// when the level isn't set.
+	pub fn recipe_unlocked(&self, facilities: &Facilities, recipe: &Recipe) -> bool {
+		self.level.is_none_or(|level| facilities.recipe_unlocked(recipe, level))
+	}
+
 	/// The owned card of `kind`, or the default if it isn't listed.
 	pub fn owned(&self, kind: CardKind) -> Owned {
 		self.cards.get(&kind).copied().unwrap_or_default()
@@ -68,12 +74,12 @@ mod tests {
 
 	#[test]
 	fn available_cards_are_capped_by_facility_level() {
-		let facilities: Facilities = ron::from_str(include_str!("../data/facilities.ron")).unwrap();
+		let facilities = crate::facility::tests::test_facilities();
 		let mut facility = Facility {
 			level: Some(5),
 			cards: BTreeMap::from([
 				(CardKind::Cut, Owned { limit: 4, level: 8 }),
-				// Not unlocked until Kitchen 8
+				// Not unlocked at level 5
 				(CardKind::Ferment, Owned { limit: 2, level: 2 }),
 				// No data, so not capped
 				(CardKind::Banquet, Owned { limit: 1, level: 3 }),

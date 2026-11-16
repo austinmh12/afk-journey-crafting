@@ -77,6 +77,24 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
 		recipes.iter().collect()
 	};
 
+	// Leave out recipes the facility's level hasn't unlocked, unless asked for by name
+	let unlocked = |recipe: &Recipe| {
+		inventory
+			.get(&recipe.location)
+			.is_none_or(|facility| facility.recipe_unlocked(&facilities, recipe))
+	};
+	let (selected, locked): (Vec<&Recipe>, Vec<&Recipe>) =
+		selected.into_iter().partition(|recipe| args.recipe.is_some() || unlocked(recipe));
+	for recipe in &selected {
+		if !unlocked(recipe) {
+			eprintln!("{} isn't unlocked at your {} level yet, running it anyway", recipe.name, recipe.location.name());
+		}
+	}
+	if !locked.is_empty() {
+		let names: Vec<&str> = locked.iter().map(|recipe| recipe.name.as_str()).collect();
+		eprintln!("Skipping recipes not unlocked at your facility level: {}", names.join(", "));
+	}
+
 	let mut locations: Vec<Location> = selected.iter().map(|recipe| recipe.location).collect();
 	locations.sort();
 	locations.dedup();

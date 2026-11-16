@@ -105,6 +105,10 @@ impl Component for App {
 			Msg::SetFacilityLevel(level) => {
 				self.inventory.entry(self.location).or_default().level = level;
 				save_inventory(&self.inventory);
+				// A recipe the new level hasn't unlocked can't stay selected
+				if self.selected.is_some_and(|selected| !self.location_recipes().any(|i| i == selected)) {
+					self.selected = None;
+				}
 			}
 			Msg::UseMaximums => {
 				let location = self.location;
@@ -185,8 +189,20 @@ impl App {
 	}
 
 	/// Indices of the recipes made at the current location.
+	/// Indices of the recipes made at the current location that its facility level has unlocked.
 	fn location_recipes(&self) -> impl Iterator<Item = usize> + '_ {
-		(0..self.recipes.len()).filter(|&i| self.recipes[i].location == self.location)
+		let facility = self.inventory.get(&self.location);
+		(0..self.recipes.len()).filter(move |&i| {
+			let recipe = &self.recipes[i];
+			recipe.location == self.location
+				&& facility.is_none_or(|facility| facility.recipe_unlocked(&self.facilities, recipe))
+		})
+	}
+
+	/// How many recipes at the current location aren't unlocked yet.
+	fn locked_recipe_count(&self) -> usize {
+		let total = self.recipes.iter().filter(|recipe| recipe.location == self.location).count();
+		total - self.location_recipes().count()
 	}
 
 	fn start_run(&mut self, ctx: &Context<Self>) {
@@ -430,7 +446,13 @@ impl App {
 							{ format!("Calculating {} recipes…", self.run.as_ref().map_or("", |run| run.location.name())) }
 						</span>
 					},
-					None => html! {},
+					None => match self.locked_recipe_count() {
+						0 => html! {},
+						1 => html! { <span class="status">{ "1 more recipe unlocks at a higher facility level" }</span> },
+						locked => html! {
+							<span class="status">{ format!("{locked} more recipes unlock at higher facility levels") }</span>
+						},
+					},
 				} }
 			</section>
 		}

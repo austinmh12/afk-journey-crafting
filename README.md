@@ -23,7 +23,7 @@ A big thanks to [@MatsuTaku](https://github.com/MatsuTaku) as they had a lot of 
 The web front end is built with [Yew](https://yew.rs) and [Trunk](https://trunkrs.dev). It runs entirely in your browser:
 
 - A tab for each location (Kitchen, Forge, Alchemy) at the top of the page.
-- A **Facility level** selector. Cards are capped to what that level allows: capped values are flagged (for example "Level → 4"), cards that aren't unlocked yet are greyed out, and **Use level maximums** sets every card to the highest it can be.
+- A **Facility level** selector. Cards are capped to what that level allows: capped values are flagged (for example "Level → 4"), cards that aren't unlocked yet are greyed out, and **Use level maximums** sets every card to the highest it can be. Recipes the level hasn't unlocked are left out of the recipe selector and **All**.
 - The location's cards, each with a **Level** and **Limit** box. A limit of 0 leaves the card out. Edits are saved in your browser, and **Reset all locations to defaults** goes back to `data/inventory.ron`.
 - A **Recipe** selector. **All** (the default) runs every recipe at the location; or pick a single recipe. **Calculate** runs it.
 - A results table with one row per recipe: the recipe, with its average score and stars underneath, and the cards in its best deck.
@@ -163,10 +163,11 @@ Recipe powers are matched by recipe name in code (see the `powers` module in [sr
 
 ### `facilities.ron`: what each facility level allows
 
-For each location, two tables keyed by facility level:
+For each location, three tables keyed by facility level:
 
 - `card_levels`: the highest level each card can be at.
 - `card_limits`: the most copies of each card that can go in one deck.
+- `recipe_unlocks`: the recipes that unlock at that level, by their names in `recipes.ron`.
 
 ```ron
 Kitchen: (
@@ -176,8 +177,14 @@ Kitchen: (
 	card_limits: {
 		8: {HeatControl: 4, Cut: 3, Season: 1, SlowCook: 2, Ferment: 2, Bake: 0},
 	},
+	recipe_unlocks: {
+		1: ["Round Bread", "Flatbread"],
+		3: ["Toast"],
+	},
 ),
 ```
+
+With a facility level set in `inventory.ron`, recipes that unlock at a higher level are skipped in `--location` and full runs. A recipe asked for with `--recipe` still runs, with a warning. A recipe that isn't listed counts as unlocked. For now every recipe is listed under level 1, until their unlock levels are known.
 
 `0` means the card isn't unlocked yet at that level. A facility level that isn't listed, or a card that isn't listed for a level, has no known cap, so the inventory's values are used as they are. That lets the table be filled in a bit at a time. The current data covers levels 1 to 11 (`card_levels`) and 1 to 10 (`card_limits`), from [@MatsuTaku's](https://github.com/MatsuTaku) optimizer, for most cards. The comment at the top of the file lists the cards that aren't covered yet.
 

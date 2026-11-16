@@ -3,16 +3,17 @@
 //
 //   card_levels: the highest level each card can be at that facility level.
 //   card_limits: the most copies of each card that can go in one deck.
+//   recipe_unlocks: the recipes that unlock at each facility level. Names must match
+//                   recipes.ron exactly. A recipe that isn't listed counts as unlocked.
 //
 // 0 means the card isn't unlocked yet at that facility level. A facility level that
 // isn't listed, or a card that isn't listed for a level, has no known cap, so the
 // inventory's own values are used as they are.
 //
+// Every recipe is under level 1 until its real unlock level is known.
+//
 // Levels 1-11 (card_levels) and 1-10 (card_limits) are from @MatsuTaku's
-// AFK Journey Techcard Optimizer. Cards not listed yet:
-//   Kitchen: ExactCook, Banquet
-//   Forge:   Sharpening, Soulbind, Pyroburst
-//   Alchemy: Crystallize, Overload, Reversal, Conflux, Harmonia
+// AFK Journey Techcard Optimizer.
 {
 	Kitchen: (
 		card_levels: {
@@ -39,6 +40,30 @@
 			8: {HeatControl: 4, Cut: 3, Season: 1, SlowCook: 2, Ferment: 2, Bake: 0, ExactCook: 0, Banquet: 0},
 			9: {HeatControl: 4, Cut: 3, Season: 1, SlowCook: 2, Ferment: 2, Bake: 0, ExactCook: 0, Banquet: 0},
 			10: {HeatControl: 4, Cut: 3, Season: 1, SlowCook: 2, Ferment: 2, Bake: 1, ExactCook: 0, Banquet: 0},
+		},
+		recipe_unlocks: {
+			1: [
+				"Round Bread",
+				"Flatbread",
+				"Toast",
+				"Spice Bread",
+				"Grape Vinegar",
+				"Salted Raisin",
+				"Spice Dry Fruit",
+				"Salted Dry Fruit",
+				"Shroom Stir-Fry",
+				"Dried Mushroom",
+				"Pinkroot Stew",
+				"Odd Sweet",
+				"Crispy Blackroot",
+				"Salted Corn Chips",
+				"Earthy Flatbread",
+				"Popcorn",
+				"Roasted Corn",
+				"Healthy Candied Skewer",
+				"Cool Candied Skewer",
+				"Shaved Ice",
+			],
 		},
 	),
 	Forge: (
@@ -67,6 +92,28 @@
 			9: {ForgeExpert: 4, Forge: 3, Ignite: 1, HeatUp: 2, Charge: 2, MultiForge: 2, Reforge: 0, Sharpening: 0, Soulbind: 0, Pyroburst: 0},
 			10: {ForgeExpert: 4, Forge: 3, Ignite: 1, HeatUp: 2, Charge: 2, MultiForge: 2, Reforge: 2, Sharpening: 0, Soulbind: 0, Pyroburst: 0},
 		},
+		recipe_unlocks: {
+			1: [
+				"Copper Carver",
+				"Copper Mask",
+				"Fine Carver",
+				"Copper Stewpot",
+				"Carved Box",
+				"Chillguard Armor",
+				"Stone Armor",
+				"Warm Stone Armor",
+				"Flameguard Plate",
+				"Firefang Sword",
+				"Fireproof Helm",
+				"Iron Mixing Dish",
+				"Thermo Chest",
+				"Mithril Mortar",
+				"Herb Tray",
+				"Protective Pick Hammer",
+				"Pick Hammer",
+				"Frost Dagger",
+			],
+		},
 	),
 	Alchemy: (
 		card_levels: {
@@ -93,6 +140,29 @@
 			8: {Ingredients: 4, Grind: 4, Distill: 1, Enchant: 2, Fuse: 1, Overcharge: 0, Crystallize: 0, Overload: 0, Reversal: 0, Conflux: 0, Harmonia: 0},
 			9: {Ingredients: 4, Grind: 4, Distill: 1, Enchant: 2, Fuse: 1, Overcharge: 0, Crystallize: 0, Overload: 0, Reversal: 0, Conflux: 0, Harmonia: 0},
 			10: {Ingredients: 4, Grind: 4, Distill: 1, Enchant: 2, Fuse: 1, Overcharge: 2, Crystallize: 0, Overload: 0, Reversal: 0, Conflux: 0, Harmonia: 0},
+		},
+		recipe_unlocks: {
+			1: [
+				"Growth Serum",
+				"Magic Arrow",
+				"Calming Bouquet",
+				"Calming Warmdust",
+				"Warmdust",
+				"Warming Incense",
+				"Calmwind Incense",
+				"Soothing Tonic",
+				"Illusion Potion",
+				"Fireward Ring",
+				"Refind Illusion Potion",
+				"Earth Essence",
+				"Extraction Flask",
+				"Basic Antidote",
+				"Earth Antidote",
+				"Compound Antidote",
+				"Repellent Sachet",
+				"Frost Antidote",
+				"Bottled Blizzard",
+			],
 		},
 	),
 }
