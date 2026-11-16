@@ -8,7 +8,8 @@ use yew::prelude::*;
 use super::data;
 use super::worker::{BestDeck, CraftWorker, Job, JobDone};
 use crate::card::{Card, CardKind};
-use crate::inventory::{Inventory, Owned, available_cards};
+use crate::facility::{self, Facilities};
+use crate::inventory::{Facility, Inventory, Owned, available_cards};
 use crate::recipe::{Location, Recipe};
 
 /// Where the player's edited inventory is saved in the browser.
@@ -19,6 +20,10 @@ const MAX_WORKERS: usize = 32;
 
 pub enum Msg {
 	SelectLocation(Location),
+	/// `None` leaves the location's cards uncapped.
+	SetFacilityLevel(Option<u8>),
+	/// Sets every card at the location to the most its facility level allows.
+	UseMaximums,
 	SetLevel(CardKind, u8),
 	SetLimit(CardKind, usize),
 	ResetInventory,
@@ -61,6 +66,7 @@ impl Run {
 
 pub struct App {
 	recipes: Vec<Recipe>,
+	facilities: Facilities,
 	inventory: Inventory,
 	location: Location,
 	selected: Option<usize>,
@@ -78,6 +84,7 @@ impl Component for App {
 	fn create(_ctx: &Context<Self>) -> Self {
 		Self {
 			recipes: data::recipes(),
+			facilities: data::facilities(),
 			inventory: load_inventory(),
 			location: Location::Kitchen,
 			selected: None,
@@ -94,6 +101,19 @@ impl Component for App {
 					self.location = location;
 					self.selected = None;
 				}
+			}
+			Msg::SetFacilityLevel(level) => {
+				self.inventory.entry(self.location).or_default().level = level;
+				save_inventory(&self.inventory);
+			}
+			Msg::UseMaximums => {
+				let location = self.location;
+				let facility = self.inventory.entry(location).or_default();
+				for kind in CardKind::ALL.into_iter().filter(|kind| kind.location() == location) {
+					let maximum = facility.cap(&self.facilities, location, kind).maximum(facility.owned(kind));
+					facility.cards.insert(kind, maximum);
+				}
+				save_inventory(&self.inventory);
 			}
 			Msg::SetLevel(kind, level) => {
 				self.owned_mut(kind).level = level;
@@ -157,15 +177,11 @@ impl Component for App {
 
 impl App {
 	fn owned_mut(&mut self, kind: CardKind) -> &mut Owned {
-		self.inventory.entry(kind.location()).or_default().entry(kind).or_default()
+		self.inventory.entry(kind.location()).or_default().cards.entry(kind).or_default()
 	}
 
-	fn owned(&self, kind: CardKind) -> Owned {
-		self.inventory
-			.get(&kind.location())
-			.and_then(|cards| cards.get(&kind))
-			.copied()
-			.unwrap_or_default()
+	fn facility(&self) -> Facility {
+		self.inventory.get(&self.location).cloned().unwrap_or_default()
 	}
 
 	/// Indices of the recipes made at the current location.
@@ -181,7 +197,7 @@ impl App {
 			Some(recipe) => vec![recipe],
 			None => self.location_recipes().collect(),
 		};
-		let cards = available_cards(&self.inventory, self.location);
+		let cards = available_cards(&self.inventory, &self.facilities, self.location);
 
 		self.run_id += 1;
 		let run_id = self.run_id;
@@ -252,43 +268,132 @@ impl App {
 
 	fn view_inventory(&self, ctx: &Context<Self>) -> Html {
 		let link = ctx.link();
-		let kinds = CardKind::ALL.into_iter().filter(|kind| kind.location() == self.location);
+		let location = self.location;
+		let facility = self.facility();
+		let kinds = CardKind::ALL.into_iter().filter(|kind| kind.location() == location);
+
+		let on_facility_level = link.callback(|e: Event| {
+			let value = e.target_unchecked_into::<HtmlSelectElement>().value();
+			Msg::SetFacilityLevel(value.parse().ok())
+		});
+		let level_hint = match facility.level {
+			None => "Set the facility level to cap each card to what that level allows.".to_string(),
+			Some(level) if !self.has_cap_data(level) => {
+				format!("No data for {} level {level} yet, so cards aren't capped.", location.name())
+			}
+			Some(level) => format!("Cards are capped to what {} level {level} allows.", location.name()),
+		};
+
 		html! {
 			<section class="panel" aria-labelledby="inventory-heading">
 				<div class="panel-header">
-					<h2 id="inventory-heading">{ format!("{} cards", self.location.name()) }</h2>
+					<h2 id="inventory-heading">{ format!("{} cards", location.name()) }</h2>
 					<button class="button subtle" onclick={link.callback(|_| Msg::ResetInventory)}>
 						{ "Reset all locations to defaults" }
 					</button>
 				</div>
-				<p class="hint">{ "A limit of 0 leaves the card out. Changes are saved in this browser." }</p>
+				<div class="facility-row">
+					<label class="facility-level">
+						<span>{ "Facility level" }</span>
+						<select onchange={on_facility_level}>
+							<option value="" selected={facility.level.is_none()}>{ "Not set" }</option>
+							{ for (1..=facility::MAX_LEVEL).map(|level| html! {
+								<option value={level.to_string()} selected={facility.level == Some(level)}>
+									{ level }
+								</option>
+							}) }
+						</select>
+					</label>
+					<button
+						class="button subtle"
+						disabled={facility.level.is_none()}
+						title="Set every card to the highest level and copies this facility level allows"
+						onclick={link.callback(|_| Msg::UseMaximums)}
+					>
+						{ "Use level maximums" }
+					</button>
+				</div>
+				<p class="hint">
+					{ level_hint }
+					{ " A limit of 0 leaves the card out. Changes are saved in this browser." }
+				</p>
 				<div class="card-grid">
-					{ for kinds.map(|kind| {
-						let owned = self.owned(kind);
-						let on_level = link.batch_callback(move |e: InputEvent| {
-							let value = e.target_unchecked_into::<HtmlInputElement>().value();
-							value.parse::<u8>().ok().filter(|&level| level >= 1).map(|level| Msg::SetLevel(kind, level))
-						});
-						let on_limit = link.batch_callback(move |e: InputEvent| {
-							let value = e.target_unchecked_into::<HtmlInputElement>().value();
-							value.parse::<usize>().ok().filter(|&limit| limit <= 99).map(|limit| Msg::SetLimit(kind, limit))
-						});
-						html! {
-							<div class={classes!("card-input", (owned.limit == 0).then_some("unused"))}>
-								<span class="card-name">{ kind.name() }</span>
-								<label>
-									<span>{ "Level" }</span>
-									<input type="number" min="1" max="255" value={owned.level.to_string()} oninput={on_level} />
-								</label>
-								<label>
-									<span>{ "Limit" }</span>
-									<input type="number" min="0" max="99" value={owned.limit.to_string()} oninput={on_limit} />
-								</label>
-							</div>
-						}
-					}) }
+					{ for kinds.map(|kind| self.view_card_input(ctx, &facility, kind)) }
 				</div>
 			</section>
+		}
+	}
+
+	/// Whether the facilities data has any caps for `level` at the current location.
+	fn has_cap_data(&self, level: u8) -> bool {
+		self.facilities.0.get(&self.location).is_some_and(|table| {
+			table.card_levels.contains_key(&level) || table.card_limits.contains_key(&level)
+		})
+	}
+
+	fn view_card_input(&self, ctx: &Context<Self>, facility: &Facility, kind: CardKind) -> Html {
+		let link = ctx.link();
+		let owned = facility.owned(kind);
+		let cap = facility.cap(&self.facilities, self.location, kind);
+		let locked = cap.locked();
+		let used = cap.apply(owned);
+
+		let on_level = link.batch_callback(move |e: InputEvent| {
+			let value = e.target_unchecked_into::<HtmlInputElement>().value();
+			value.parse::<u8>().ok().filter(|&level| level >= 1).map(|level| Msg::SetLevel(kind, level))
+		});
+		let on_limit = link.batch_callback(move |e: InputEvent| {
+			let value = e.target_unchecked_into::<HtmlInputElement>().value();
+			value.parse::<usize>().ok().filter(|&limit| limit <= 99).map(|limit| Msg::SetLimit(kind, limit))
+		});
+
+		let note = if locked {
+			Some(format!("Not unlocked at level {}", facility.level.unwrap_or_default()))
+		} else if cap != facility::Cap::default() {
+			let level = cap.level.map_or("?".to_string(), |level| level.to_string());
+			let copies = match cap.limit {
+				Some(1) => "1 copy".to_string(),
+				Some(limit) => format!("{limit} copies"),
+				None => "? copies".to_string(),
+			};
+			Some(format!("Max Lv {level}, {copies}"))
+		} else {
+			None
+		};
+		let level_over = !locked && used.level < owned.level;
+		let limit_over = !locked && used.limit < owned.limit;
+
+		html! {
+			<div class={classes!("card-input", (used.limit == 0).then_some("unused"), locked.then_some("locked"))}>
+				<div class="card-label">
+					<span class="card-name">{ kind.name() }</span>
+					if let Some(note) = note {
+						<span class="card-note">{ note }</span>
+					}
+				</div>
+				<label class={classes!(level_over.then_some("over"))}>
+					<span>{ if level_over { format!("Level → {}", used.level) } else { "Level".to_string() } }</span>
+					<input
+						type="number"
+						min="1"
+						max={cap.level.map_or("255".to_string(), |level| level.max(1).to_string())}
+						value={owned.level.to_string()}
+						disabled={locked}
+						oninput={on_level}
+					/>
+				</label>
+				<label class={classes!(limit_over.then_some("over"))}>
+					<span>{ if limit_over { format!("Limit → {}", used.limit) } else { "Limit".to_string() } }</span>
+					<input
+						type="number"
+						min="0"
+						max={cap.limit.map_or("99".to_string(), |limit| limit.to_string())}
+						value={owned.limit.to_string()}
+						disabled={locked}
+						oninput={on_limit}
+					/>
+				</label>
+			</div>
 		}
 	}
 
@@ -426,10 +531,20 @@ fn worker_count() -> usize {
 }
 
 fn load_inventory() -> Inventory {
-	LocalStorage::get::<String>(STORAGE_KEY)
-		.ok()
-		.and_then(|text| ron::from_str(&text).ok())
-		.unwrap_or_else(data::default_inventory)
+	let Ok(text) = LocalStorage::get::<String>(STORAGE_KEY) else {
+		return data::default_inventory();
+	};
+	if let Ok(inventory) = ron::from_str(&text) {
+		return inventory;
+	}
+	// Saved before facility levels were added: just the cards at each location
+	match ron::from_str::<BTreeMap<Location, BTreeMap<CardKind, Owned>>>(&text) {
+		Ok(old) => old
+			.into_iter()
+			.map(|(location, cards)| (location, Facility { level: None, cards }))
+			.collect(),
+		Err(_) => data::default_inventory(),
+	}
 }
 
 fn save_inventory(inventory: &Inventory) {

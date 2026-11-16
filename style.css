@@ -303,3 +303,60 @@ button:focus-visible {
 	font-size: 0.8rem;
 	color: var(--muted);
 }
+
+.facility-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: end;
+	gap: 10px;
+	margin-top: 10px;
+}
+
+.facility-level {
+	display: grid;
+	gap: 4px;
+	font-size: 0.85rem;
+	font-weight: 600;
+}
+
+.facility-level select {
+	font-weight: 400;
+	min-width: 7em;
+}
+
+.button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.card-label {
+	display: grid;
+	min-width: 0;
+}
+
+.card-note {
+	font-size: 0.75rem;
+	color: var(--muted);
+}
+
+.card-input.locked {
+	background: var(--surface-2);
+	border-style: dashed;
+}
+
+.card-input.locked .card-name {
+	color: var(--muted);
+}
+
+.card-input label.over {
+	color: var(--star);
+	font-weight: 600;
+}
+
+.card-input label.over input {
+	border-color: var(--star);
+}
+
+input:disabled {
+	opacity: 0.5;
+}

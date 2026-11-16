@@ -12,6 +12,7 @@ use serde::de::DeserializeOwned;
 
 use afkjourney_crafting::card::Card;
 use afkjourney_crafting::deck::{Deck, ScoreResults, beats, generate_decks};
+use afkjourney_crafting::facility::Facilities;
 use afkjourney_crafting::inventory::{Inventory, available_cards};
 use afkjourney_crafting::recipe::{Location, Recipe};
 use afkjourney_crafting::tables::CardTables;
@@ -32,7 +33,7 @@ struct Args {
 	#[arg(short, long)]
 	inventory: Option<PathBuf>,
 
-	/// Directory holding cards.ron, recipes.ron and the default inventory.ron.
+	/// Directory holding cards.ron, recipes.ron, facilities.ron and the default inventory.ron.
 	#[arg(short, long, default_value = "data")]
 	data_dir: PathBuf,
 }
@@ -60,6 +61,7 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
 	let inventory: Inventory = load(&inventory_path)?;
 	let recipes_path = args.data_dir.join("recipes.ron");
 	let recipes: Vec<Recipe> = load(&recipes_path)?;
+	let facilities: Facilities = load(&args.data_dir.join("facilities.ron"))?;
 
 	let selected: Vec<&Recipe> = if let Some(name) = &args.recipe {
 		if args.location.is_some() {
@@ -75,10 +77,17 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
 		recipes.iter().collect()
 	};
 
+	let mut locations: Vec<Location> = selected.iter().map(|recipe| recipe.location).collect();
+	locations.sort();
+	locations.dedup();
+	for location in locations {
+		report_caps(&inventory, &facilities, location);
+	}
+
 	let mut results: Vec<(&Recipe, Deck, ScoreResults)> = Vec::new();
 
 	for recipe in selected {
-		let decks = generate_decks(&available_cards(&inventory, recipe.location), recipe.cards);
+		let decks = generate_decks(&available_cards(&inventory, &facilities, recipe.location), recipe.cards);
 		println!("{} has {} unique decks", recipe.name, decks.len());
 
 		let progress = ProgressBar::new(decks.len() as u64)
@@ -115,4 +124,27 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
 		println!("      {}", cards.join(", "));
 	}
 	Ok(())
+}
+
+/// Notes the cards the facility's level lowers from what the inventory says.
+fn report_caps(inventory: &Inventory, facilities: &Facilities, location: Location) {
+	let Some(facility) = inventory.get(&location) else { return };
+	let Some(level) = facility.level else { return };
+	for (&kind, &owned) in &facility.cards {
+		let cap = facility.cap(facilities, location, kind);
+		let capped = cap.apply(owned);
+		if cap.locked() && owned.limit > 0 {
+			eprintln!("{} level {level}: {} isn't unlocked yet, so it isn't used", location.name(), kind.name());
+		} else if capped != owned {
+			eprintln!(
+				"{} level {level}: {} capped to level {} with {} copies (inventory has level {}, {} copies)",
+				location.name(),
+				kind.name(),
+				capped.level,
+				capped.limit,
+				owned.level,
+				owned.limit
+			);
+		}
+	}
 }

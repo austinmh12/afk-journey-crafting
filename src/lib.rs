@@ -3,6 +3,7 @@
 
 pub mod card;
 pub mod deck;
+pub mod facility;
 pub mod inventory;
 pub mod recipe;
 pub mod score;
