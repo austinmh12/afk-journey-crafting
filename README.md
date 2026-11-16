@@ -10,11 +10,45 @@ For each recipe, the calculator:
 
 Decks are scored in parallel across all CPU cores.
 
-A big thanks to [@MatsuTaku's](https://github.com/MatsuTaku) as they had a lot of the data that made it possible to score earlier levels of cards. They made a tool here: [AFK Journey Techcard Optimizer](https://github.com/MatsuTaku/afkjourney-techcard-optimizer). Though slightly outdated, the information is still good for early to mid-level homesteads.
+There are two ways to use it: a [web page](#web-front-end) where you edit your cards and pick recipes, or the [command line](#running).
+
+A big thanks to [@MatsuTaku](https://github.com/MatsuTaku) as they had a lot of the data that made it possible to score earlier levels of cards. They made a tool here: [AFK Journey Techcard Optimizer](https://github.com/MatsuTaku/afkjourney-techcard-optimizer). Though slightly outdated, the information is still good for early to mid-level homesteads.
 
 ## Requirements
 
 - Rust 1.85 or newer (the crate uses the 2024 edition). Install it from <https://rustup.rs>.
+
+## Web front end
+
+The web front end is built with [Yew](https://yew.rs) and [Trunk](https://trunkrs.dev). It runs entirely in your browser:
+
+- A tab for each location (Kitchen, Forge, Alchemy) at the top of the page.
+- The location's cards, each with a **Level** and **Limit** box. A limit of 0 leaves the card out. Edits are saved in your browser, and **Reset all locations to defaults** goes back to `data/inventory.ron`.
+- A **Recipe** selector. **All** (the default) runs every recipe at the location; or pick a single recipe. **Calculate** runs it.
+- A results table with one row per recipe: the recipe, with its average score and stars underneath, and the cards in its best deck.
+
+Decks are scored in [web workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API), one per CPU core, so the page stays responsive during long runs. Expect it to be slower than the command line, as WebAssembly is slower than native code.
+
+### Setup
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install --locked trunk
+```
+
+### Running the web front end
+
+From the repository root:
+
+```sh
+# Builds, serves on http://127.0.0.1:8080 and rebuilds on changes
+trunk serve --release
+
+# Or build static files into dist/ to host anywhere
+trunk build --release
+```
+
+The `data/*.ron` files are built into the web app, so rebuild after editing them.
 
 ## Running
 
@@ -137,7 +171,13 @@ Edit this file when a card's in-game numbers are confirmed or change.
 
 | Path | Contents |
 |---|---|
-| [src/main.rs](src/main.rs) | Command line options, loading data, running recipes and printing results. |
+| [src/main.rs](src/main.rs) | Entry point: the command line calculator natively, the web app in the browser. |
+| [src/cli.rs](src/cli.rs) | Command line options, loading data, running recipes and printing results. |
+| [src/lib.rs](src/lib.rs) | The scoring library shared by the command line and the web app. |
+| [src/inventory.rs](src/inventory.rs) | The owned cards in `inventory.ron`. |
+| [src/web/app.rs](src/web/app.rs) | The Yew page: location tabs, card inputs, recipe selector and results table. |
+| [src/web/worker.rs](src/web/worker.rs), [src/bin/worker.rs](src/bin/worker.rs) | The web worker that scores decks. |
+| [index.html](index.html), [style.css](style.css) | The page shell Trunk builds from, and its styles. |
 | [src/deck.rs](src/deck.rs) | Generating decks and play orders, and scoring them. |
 | [src/card.rs](src/card.rs) | Every card type and its effect. |
 | [src/recipe.rs](src/recipe.rs) | Recipes, locations and recipe powers. |
@@ -155,4 +195,4 @@ Run the tests with `cargo test`.
 ## Roadmap Items
 
 - Add different scoring modes such as the highest scoring deck for a recipe or the lowest scoring, etc.
-- Add a front end web page with [Yew](https://yew.rs/) to allow for easier visualization of the decks being scored and an easier interface for users to input their current inventory
+- Add visualization of the decks being scored to the web front end

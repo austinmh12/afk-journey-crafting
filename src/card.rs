@@ -1,14 +1,14 @@
 use std::fmt;
 
 use rand::{Rng, RngExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::recipe::powers;
+use crate::recipe::{Location, powers};
 use crate::score::Score;
 use crate::tables::{AddSub, CardTables};
 
 /// Every card type. Variant order sets the order cards are listed and combined in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum CardKind {
 	// Kitchen
 	HeatControl,
@@ -45,6 +45,74 @@ pub enum CardKind {
 }
 
 impl CardKind {
+	/// Every card kind, in variant order.
+	pub const ALL: [Self; 29] = [
+		Self::HeatControl,
+		Self::Cut,
+		Self::Season,
+		Self::SlowCook,
+		Self::Ferment,
+		Self::Bake,
+		Self::ExactCook,
+		Self::Banquet,
+		Self::Forge,
+		Self::Charge,
+		Self::Sharpening,
+		Self::MultiForge,
+		Self::HeatUp,
+		Self::Reforge,
+		Self::Soulbind,
+		Self::ForgeExpert,
+		Self::Pyroburst,
+		Self::Ignite,
+		Self::Ingredients,
+		Self::Grind,
+		Self::Distill,
+		Self::Crystallize,
+		Self::Overload,
+		Self::Enchant,
+		Self::Fuse,
+		Self::Reversal,
+		Self::Conflux,
+		Self::Harmonia,
+		Self::Overcharge,
+	];
+
+	/// The facility this card is played at.
+	pub fn location(self) -> Location {
+		match self {
+			Self::HeatControl
+			| Self::Cut
+			| Self::Season
+			| Self::SlowCook
+			| Self::Ferment
+			| Self::Bake
+			| Self::ExactCook
+			| Self::Banquet => Location::Kitchen,
+			Self::Forge
+			| Self::Charge
+			| Self::Sharpening
+			| Self::MultiForge
+			| Self::HeatUp
+			| Self::Reforge
+			| Self::Soulbind
+			| Self::ForgeExpert
+			| Self::Pyroburst
+			| Self::Ignite => Location::Forge,
+			Self::Ingredients
+			| Self::Grind
+			| Self::Distill
+			| Self::Crystallize
+			| Self::Overload
+			| Self::Enchant
+			| Self::Fuse
+			| Self::Reversal
+			| Self::Conflux
+			| Self::Harmonia
+			| Self::Overcharge => Location::Alchemy,
+		}
+	}
+
 	pub fn name(self) -> &'static str {
 		match self {
 			Self::HeatControl => "Heat Control",
@@ -81,7 +149,7 @@ impl CardKind {
 }
 
 /// A card at a specific level. A deck only ever holds one level of each kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Card {
 	pub kind: CardKind,
 	pub level: u8,

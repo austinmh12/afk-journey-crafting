@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Homestead Crafting Calculator</title>
+		<link rel="icon" href="data:," />
+		<link data-trunk rel="css" href="style.css" />
+		<!-- The page itself (src/main.rs). data-wasm-opt="0" skips the optional wasm-opt size pass, which Trunk would otherwise download -->
+		<link data-trunk rel="rust" href="Cargo.toml" data-bin="afkjourney-crafting" data-type="main" data-wasm-opt="0" />
+		<!-- The deck-scoring web worker (src/bin/worker.rs), built as worker.js -->
+		<link data-trunk rel="rust" href="Cargo.toml" data-bin="worker" data-type="worker" data-bindgen-target="web" data-wasm-opt="0" />
+	</head>
+	<body></body>
+</html>

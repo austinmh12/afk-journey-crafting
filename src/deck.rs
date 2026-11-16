@@ -41,6 +41,13 @@ impl ScoreResults {
 	}
 }
 
+/// Whether a deck with `average` at position `index` in [`generate_decks`]'s output
+/// beats the current best. Highest average wins; ties go to the earlier deck, so the
+/// winner doesn't depend on the order decks were scored in.
+pub fn beats(average: i64, index: usize, best_average: i64, best_index: usize) -> bool {
+	average > best_average || (average == best_average && index < best_index)
+}
+
 /// An unordered set of cards to craft with. Cards are kept sorted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Deck {

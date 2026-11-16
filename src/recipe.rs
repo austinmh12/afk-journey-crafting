@@ -1,5 +1,5 @@
 use rand::Rng;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::card::CardKind;
 use crate::score::Score;
@@ -48,11 +48,24 @@ pub mod powers {
 	pub const FROST_ANTIDOTE: &str = "Frost Antidote";
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(clap::ValueEnum))]
 pub enum Location {
 	Kitchen,
 	Forge,
 	Alchemy,
+}
+
+impl Location {
+	pub const ALL: [Self; 3] = [Self::Kitchen, Self::Forge, Self::Alchemy];
+
+	pub fn name(self) -> &'static str {
+		match self {
+			Self::Kitchen => "Kitchen",
+			Self::Forge => "Forge",
+			Self::Alchemy => "Alchemy",
+		}
+	}
 }
 
 #[derive(Debug, Clone, Deserialize)]
