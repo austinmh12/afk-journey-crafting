@@ -20,6 +20,8 @@ A big thanks to [@MatsuTaku](https://github.com/MatsuTaku) as they had a lot of 
 
 ## Web front end
 
+**Use it online: <https://austinmh12.github.io/afk-journey-crafting/>**
+
 The web front end is built with [Yew](https://yew.rs) and [Trunk](https://trunkrs.dev). It runs entirely in your browser:
 
 - A tab for each location (Kitchen, Forge, Alchemy) at the top of the page.
@@ -50,6 +52,16 @@ trunk build --release
 ```
 
 The `data/*.ron` files are built into the web app, so rebuild after editing them.
+
+### Hosting on GitHub Pages
+
+[.github/workflows/pages.yml](.github/workflows/pages.yml) runs the tests, builds the page and publishes it to GitHub Pages on every push to `trunk`. It can also be run by hand from the Actions tab. One-time setup: in the repository's **Settings > Pages**, set **Source** to **GitHub Actions**.
+
+Pages serves the site from `/<repository name>/`, which the workflow passes to Trunk as `--public-url`. To try that locally:
+
+```sh
+trunk build --release --public-url /afk-journey-crafting/
+```
 
 ## Running
 
