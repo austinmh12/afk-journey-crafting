@@ -6,6 +6,8 @@
 		<title>Homestead Crafting Calculator</title>
 		<link rel="icon" href="data:," />
 		<link data-trunk rel="css" href="style.css" />
+		<!-- Images for facilities, recipes and cards, copied to dist/static -->
+		<link data-trunk rel="copy-dir" href="static" />
 		<!-- The page itself (src/main.rs). data-wasm-opt="0" skips the optional wasm-opt size pass, which Trunk would otherwise download -->
 		<link data-trunk rel="rust" href="Cargo.toml" data-bin="afkjourney-crafting" data-type="main" data-wasm-opt="0" />
 		<!-- The deck-scoring web worker (src/bin/worker.rs), built as worker.js -->
