@@ -2,13 +2,14 @@ use std::collections::{BTreeMap, VecDeque};
 
 use gloo_storage::{LocalStorage, Storage};
 use gloo_worker::{Spawnable, WorkerBridge};
-use web_sys::{HtmlInputElement, HtmlSelectElement};
+use web_sys::{HtmlElement, HtmlInputElement, HtmlSelectElement};
 use yew::prelude::*;
 
 use super::data;
 use super::worker::{BestDeck, CraftWorker, Job, JobDone};
 use crate::card::{Card, CardKind};
 use crate::facility::{self, Facilities};
+use crate::images;
 use crate::inventory::{Facility, Inventory, Owned, available_cards};
 use crate::recipe::{Location, Recipe};
 
@@ -163,6 +164,7 @@ impl Component for App {
 									class={classes!("tab", active.then_some("active"))}
 									onclick={link.callback(move |_| Msg::SelectLocation(location))}
 								>
+									{ image(images::facility(location), "tab-icon") }
 									{ location.name() }
 								</button>
 							}
@@ -303,7 +305,10 @@ impl App {
 		html! {
 			<section class="panel" aria-labelledby="inventory-heading">
 				<div class="panel-header">
-					<h2 id="inventory-heading">{ format!("{} cards", location.name()) }</h2>
+					<div class="heading-with-image">
+						{ image(images::facility(location), "facility-image") }
+						<h2 id="inventory-heading">{ format!("{} cards", location.name()) }</h2>
+					</div>
 					<button class="button subtle" onclick={link.callback(|_| Msg::ResetInventory)}>
 						{ "Reset all locations to defaults" }
 					</button>
@@ -382,10 +387,13 @@ impl App {
 		html! {
 			<div class={classes!("card-input", (used.limit == 0).then_some("unused"), locked.then_some("locked"))}>
 				<div class="card-label">
-					<span class="card-name">{ kind.name() }</span>
-					if let Some(note) = note {
-						<span class="card-note">{ note }</span>
-					}
+					{ image(images::card(kind), "card-image") }
+					<div class="card-text">
+						<span class="card-name">{ kind.name() }</span>
+						if let Some(note) = note {
+							<span class="card-note">{ note }</span>
+						}
+					</div>
 				</div>
 				<label class={classes!(level_over.then_some("over"))}>
 					<span>{ if level_over { format!("Level → {}", used.level) } else { "Level".to_string() } }</span>
@@ -513,8 +521,13 @@ impl App {
 		html! {
 			<tr>
 				<th scope="row">
-					<div>{ &recipe.name }</div>
-					{ for summary }
+					<div class="recipe-heading">
+						{ image(images::recipe(recipe), "recipe-image") }
+						<div>
+							<div>{ &recipe.name }</div>
+							{ for summary }
+						</div>
+					</div>
 				</th>
 				<td>{ cards }</td>
 			</tr>
@@ -538,11 +551,23 @@ fn view_cards(cards: &[Card]) -> Html {
 					if count > 1 {
 						<span class="count">{ format!("{count}×") }</span>
 					}
+					{ image(images::card(card.kind), "chip-image") }
 					<span>{ card.kind.name() }</span>
 					<span class="level">{ format!("Lv {}", card.level) }</span>
 				</li>
 			}) }
 		</ul>
+	}
+}
+
+/// An image from the `static` folder, next to text that already names it, so it
+/// has no alt text. It hides itself if the file is missing, and shows again when
+/// Yew reuses the element for an image that loads.
+fn image(src: String, class: &'static str) -> Html {
+	let on_load = Callback::from(|e: Event| e.target_unchecked_into::<HtmlElement>().set_hidden(false));
+	let on_error = Callback::from(|e: Event| e.target_unchecked_into::<HtmlElement>().set_hidden(true));
+	html! {
+		<img class={classes!("image", class)} {src} alt="" loading="lazy" onload={on_load} onerror={on_error} />
 	}
 }
 

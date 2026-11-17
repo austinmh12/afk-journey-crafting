@@ -83,6 +83,9 @@ main {
 }
 
 .tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
 	appearance: none;
 	border: 0;
 	background: none;
@@ -330,8 +333,63 @@ button:focus-visible {
 }
 
 .card-label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.card-text {
 	display: grid;
 	min-width: 0;
+}
+
+/* Images from the static folder. A missing file hides its image (see image() in src/web/app.rs) */
+.image {
+	flex: none;
+	object-fit: contain;
+}
+
+.image[hidden] {
+	display: none;
+}
+
+.tab-icon {
+	width: 20px;
+	height: 20px;
+}
+
+.heading-with-image,
+.recipe-heading {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.facility-image {
+	width: 40px;
+	height: 40px;
+}
+
+.card-image {
+	width: 36px;
+	height: 36px;
+}
+
+.card-input.locked .card-image {
+	filter: grayscale(1);
+	opacity: 0.5;
+}
+
+.recipe-image {
+	width: 44px;
+	height: 44px;
+}
+
+.chip-image {
+	width: 18px;
+	height: 18px;
+	align-self: center;
 }
 
 .card-note {
