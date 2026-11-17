@@ -59,6 +59,12 @@
 	(name: "Protective Pick Hammer", location: Forge, cards: 6, stars: [1650, 9894, 33666, 129234]),
 	(name: "Pick Hammer", location: Forge, cards: 6, stars: [1110, 4640, 20000, 91500]),
 	(name: "Frost Dagger", location: Forge, cards: 5, stars: [486, 7650, 27300, 58300]),
+	(name: "Wind Gauge Staff", location: Forge, cards: 6, stars: [162, 7650, 56400, 142000]),
+	(name: "Armored Helmet", location: Forge, cards: 7, stars: [1460, 16000, 62200, 248000]),
+	(name: "Armored Bodysuit", location: Forge, cards: 6, stars: [3580, 5200, 213000, 724000]),
+	(name: "Stone Jar", location: Forge, cards: 5, stars: [150, 5400, 17800, 78000]),
+	(name: "Dust Brush", location: Forge, cards: 6, stars: [114, 12400, 78100, 178000]),
+	(name: "Lightproof Brush", location: Forge, cards: 6, stars: [813, 52100, 235000, 737000]),
 
 	// ----------- Alchemy --------------
 	(name: "Growth Serum", location: Alchemy, cards: 3, stars: [12, 32]),
