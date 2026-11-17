@@ -29,7 +29,7 @@
 	(name: "Shaved Ice", location: Kitchen, cards: 7, stars: [4610, 19900, 31400, 71900]),
 	// Powers unknown for the rest of kitchen.
 	(name: "Sweetbean Juice", location: Kitchen, cards: 7, stars: [7860, 30300, 45700, 85400]),
-	(name: "Sweatbean Shaved Ice", location: Kitchen, cards: 5, stars: [1800, 11300, 20900, 30800]),
+	(name: "Sweetbean Shaved Ice", location: Kitchen, cards: 5, stars: [1800, 11300, 20900, 30800]),
 	(name: "Sweetbean Candy", location: Kitchen, cards: 6, stars: [11900, 19000, 35000, 73000]),
 	(name: "Popping Candy", location: Kitchen, cards: 7, stars: [13800, 32300, 68700, 118000]),
 	(name: "Midnight Tea", location: Kitchen, cards: 7, stars: [21800, 63200, 119000, 265000]),
