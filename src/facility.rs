@@ -9,7 +9,7 @@ use crate::inventory::Owned;
 use crate::recipe::{Location, Recipe};
 
 /// The highest facility level in the game.
-pub const MAX_LEVEL: u8 = 16;
+pub const MAX_LEVEL: u8 = 20;
 
 /// Caps for one location, by facility level.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
