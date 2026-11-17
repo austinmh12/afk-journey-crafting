@@ -59,6 +59,7 @@
 	(name: "Protective Pick Hammer", location: Forge, cards: 6, stars: [1650, 9894, 33666, 129234]),
 	(name: "Pick Hammer", location: Forge, cards: 6, stars: [1110, 4640, 20000, 91500]),
 	(name: "Frost Dagger", location: Forge, cards: 5, stars: [486, 7650, 27300, 58300]),
+	// Powers unknown for the rest of forge.
 	(name: "Wind Gauge Staff", location: Forge, cards: 6, stars: [162, 7650, 56400, 142000]),
 	(name: "Armored Helmet", location: Forge, cards: 7, stars: [1460, 16000, 62200, 248000]),
 	(name: "Armored Bodysuit", location: Forge, cards: 6, stars: [3580, 5200, 213000, 724000]),
@@ -84,7 +85,7 @@
 	(name: "Illusion Potion", location: Alchemy, cards: 8, stars: [2220, 3300, 4700, 5570]),
 	// Power: +15 to random color at the start of production
 	(name: "Fireward Ring", location: Alchemy, cards: 9, stars: [6200, 8000, 10200, 12120]),
-	(name: "Refind Illusion Potion", location: Alchemy, cards: 7, stars: [3530, 5150, 6640, 10900]),
+	(name: "Refined Illusion Potion", location: Alchemy, cards: 7, stars: [3530, 5150, 6640, 10900]),
 	(name: "Earth Essence", location: Alchemy, cards: 6, stars: [2980, 4550, 6120, 10000]),
 	(name: "Extraction Flask", location: Alchemy, cards: 7, stars: [4460, 6270, 8230, 13200]),
 	(name: "Basic Antidote", location: Alchemy, cards: 7, stars: [2120, 4500, 8030, 20300]),
@@ -95,4 +96,10 @@
 	// Power: Doubles lowest color at end of production if highest color is more than 3x the lowest color.
 	(name: "Frost Antidote", location: Alchemy, cards: 6, stars: [2450, 11600, 35800, 133000]),
 	(name: "Bottled Blizzard", location: Alchemy, cards: 6, stars: [5100, 13000, 23300, 66500]),
+	// Powers unknown for the rest of alchemy
+	(name: "Coldseal Gel", location: Alchemy, cards: 7, stars: [9990, 18300, 34900, 107000]),
+	(name: "Anti-Itch Roller", location: Alchemy, cards: 5, stars: [606, 3670, 7840, 43200]),
+	(name: "Wood Incense", location: Alchemy, cards: 8, stars: [27800, 86700, 154000, 547000]),
+	(name: "Aquatic Incense", location: Alchemy, cards: 7, stars: [12500, 28600, 59800, 152000]),
+	(name: "Storm Emblem", location: Alchemy, cards: 7, stars: [13200, 26000, 49900, 151000]),
 ]
