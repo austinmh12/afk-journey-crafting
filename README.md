@@ -29,6 +29,12 @@ The web front end is built with [Yew](https://yew.rs) and [Trunk](https://trunkr
 - The location's cards, each with a **Level** and **Limit** box. A limit of 0 leaves the card out. Edits are saved in your browser, and **Reset all locations to defaults** goes back to `data/inventory.ron`.
 - A **Recipe** selector. **All** (the default) runs every recipe at the location; or pick a single recipe. **Calculate** runs it.
 - A results table with one row per recipe: the recipe, with its average score and stars underneath, and the cards in its best deck.
+- A **Deck builder** page (switch at the top right) for scoring a deck of your own:
+  - Pick a recipe from the location to see its image, card count, star thresholds and power.
+  - Drag cards from the location's available cards into the deck's empty slots, or click a card to fill the next slot. Each card shows how many copies are left. Drag cards between slots to swap them, and drag one back to the available cards, or click it, to take it out.
+  - Once every slot is filled, **Score deck** scores every distinct play order and shows the average, lowest and highest scores with their stars, how many play orders earn each star, and the highest- and lowest-scoring play orders.
+  - It also compares your deck with the best deck for the recipe: both averages, the difference, and which cards to take out and put in to match the best deck. If the calculator hasn't already found the best deck for your current cards, scoring a deck starts that search in the background (it can be stopped, and restarted with **Find best deck**).
+  - The **History** tab lists every deck scored for the recipe, newest first: its cards, average, lowest and highest scores, chance of the top star, and how far it is from the best deck. **Load** puts a deck back in the builder. Up to 50 decks per recipe are saved in your browser.
 
 Decks are scored in [web workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API), one per CPU core, so the page stays responsive during long runs. Expect it to be slower than the command line, as WebAssembly is slower than native code.
 
@@ -222,8 +228,9 @@ Edit this file when a card's in-game numbers are confirmed or change.
 | [src/lib.rs](src/lib.rs) | The scoring library shared by the command line and the web app. |
 | [src/inventory.rs](src/inventory.rs) | The facility levels and owned cards in `inventory.ron`. |
 | [src/facility.rs](src/facility.rs) | The facility level caps in `facilities.ron`. |
-| [src/web/app.rs](src/web/app.rs) | The Yew page: location tabs, card inputs, recipe selector and results table. |
-| [src/web/worker.rs](src/web/worker.rs), [src/bin/worker.rs](src/bin/worker.rs) | The web worker that scores decks. |
+| [src/web/app.rs](src/web/app.rs) | The Yew page: location tabs, card inputs, recipe selector, results table and deck builder. |
+| [src/builder.rs](src/builder.rs) | The deck builder's slots, and the rules for adding, moving and removing cards. |
+| [src/web/worker.rs](src/web/worker.rs), [src/bin/worker.rs](src/bin/worker.rs) | The web worker that scores decks, for both the calculator and the deck builder. |
 | [index.html](index.html), [style.css](style.css) | The page shell Trunk builds from, and its styles. |
 | [src/deck.rs](src/deck.rs) | Generating decks and play orders, and scoring them. |
 | [src/card.rs](src/card.rs) | Every card type and its effect. |

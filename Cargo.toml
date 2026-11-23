@@ -20,7 +20,7 @@ rayon = "1.12.0"
 getrandom = { version = "0.4.3", features = ["wasm_js"] }
 gloo-storage = "0.4.1"
 gloo-worker = "0.7.0"
-web-sys = { version = "0.3", features = ["HtmlElement", "HtmlInputElement", "HtmlSelectElement", "Navigator", "Window"] }
+web-sys = { version = "0.3", features = ["DataTransfer", "DragEvent", "HtmlElement", "HtmlInputElement", "HtmlSelectElement", "KeyboardEvent", "Navigator", "Node", "Window"] }
 yew = { version = "0.23.0", features = ["csr"] }
 
 [[bin]]

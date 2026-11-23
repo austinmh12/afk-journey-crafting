@@ -2,12 +2,16 @@ use std::collections::{BTreeMap, VecDeque};
 
 use gloo_storage::{LocalStorage, Storage};
 use gloo_worker::{Spawnable, WorkerBridge};
-use web_sys::{HtmlElement, HtmlInputElement, HtmlSelectElement};
+use web_sys::wasm_bindgen::JsCast;
+use web_sys::{HtmlElement, HtmlInputElement, HtmlSelectElement, Node};
+use yew::html::Scope;
 use yew::prelude::*;
 
 use super::data;
-use super::worker::{BestDeck, CraftWorker, Job, JobDone};
+use super::worker::{BestDeck, CraftWorker, Job, JobDone, Request, Response, StatsDone, StatsJob};
+use crate::builder::{self, Builder, DragSource, DropTarget, Stats};
 use crate::card::{Card, CardKind};
+use crate::deck::DeckStats;
 use crate::facility::{self, Facilities};
 use crate::images;
 use crate::inventory::{Facility, Inventory, Owned, available_cards};
@@ -15,11 +19,29 @@ use crate::recipe::{Location, Recipe};
 
 /// Where the player's edited inventory is saved in the browser.
 const STORAGE_KEY: &str = "afkjourney-crafting.inventory";
+/// Where the deck builder's history is saved in the browser.
+const HISTORY_KEY: &str = "afkjourney-crafting.history";
 /// Path to the worker script `trunk` builds from `src/bin/worker.rs`.
 const WORKER_PATH: &str = "worker.js";
 const MAX_WORKERS: usize = 32;
+/// What the deck builder shows at a location it hasn't been used at yet.
+static EMPTY_BUILDER: Builder = Builder {
+	recipe: None,
+	slots: Vec::new(),
+	stats: None,
+};
+
+/// The two pages of the app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+	/// Finds the best deck for each recipe.
+	Calculator,
+	/// Builds a deck by hand and scores it.
+	Builder,
+}
 
 pub enum Msg {
+	SetView(View),
 	SelectLocation(Location),
 	/// `None` leaves the location's cards uncapped.
 	SetFacilityLevel(Option<u8>),
@@ -37,6 +59,58 @@ pub enum Msg {
 		worker: usize,
 		done: JobDone,
 	},
+	/// `None` clears the deck builder's recipe.
+	BuilderRecipe(Option<usize>),
+	/// Puts a card in the deck builder's first empty slot.
+	BuilderAdd(CardKind),
+	/// Takes the card out of a deck builder slot.
+	BuilderRemove(usize),
+	BuilderClear,
+	DragStart(DragSource),
+	DragOver(DropTarget),
+	DragLeave(DropTarget),
+	DropCard(DropTarget),
+	DragEnd,
+	/// Scores every play order of the deck builder's deck.
+	ScoreDeck,
+	StatsDone(StatsDone),
+	/// Finds the best deck for the deck builder's recipe, to compare with.
+	FindBest,
+	StopFindBest,
+	SearchJobDone {
+		search: u32,
+		worker: usize,
+		done: JobDone,
+	},
+	SetBuilderTab(BuilderTab),
+	/// Puts a deck from the recipe's history back in the deck builder.
+	LoadDeck(usize),
+	RemoveHistory(usize),
+	ClearHistory,
+}
+
+/// The best deck found for a recipe, from either the calculator or the deck builder.
+struct KnownBest {
+	/// The cards it was found from. It's only the best deck while these are still
+	/// the location's available cards.
+	cards: Vec<(Card, usize)>,
+	/// `None` when there weren't enough cards for the recipe.
+	best: Option<BestDeck>,
+}
+
+/// The deck builder's search for the best deck for one recipe, to compare with.
+struct Search {
+	recipe: usize,
+	run: Run,
+	jobs_left: usize,
+	best: Option<BestDeck>,
+}
+
+/// The deck builder's tabs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuilderTab {
+	Deck,
+	History,
 }
 
 /// The result for one recipe, filled in as its jobs finish.
@@ -46,21 +120,75 @@ struct RecipeResult {
 	best: Option<BestDeck>,
 }
 
-/// The workers and queued jobs of a calculation in progress.
+/// The workers and queued jobs of a best deck search in progress.
 struct Run {
 	location: Location,
+	/// The cards the decks are built from.
+	cards: Vec<(Card, usize)>,
 	workers: Vec<WorkerBridge<CraftWorker>>,
 	idle: Vec<usize>,
 	queue: VecDeque<Job>,
 }
 
 impl Run {
+	/// Spawns one worker per CPU core and starts finding the best deck for each of
+	/// `recipes`, split into one job per worker. `on_done` makes the message for a
+	/// finished job, from the worker's number and its result.
+	fn start(
+		link: &Scope<App>,
+		location: Location,
+		cards: Vec<(Card, usize)>,
+		recipes: &[usize],
+		on_done: impl Fn(usize, JobDone) -> Msg + Clone + 'static,
+	) -> Self {
+		let parts = worker_count();
+		let workers = (0..parts)
+			.map(|worker| {
+				let link = link.clone();
+				let on_done = on_done.clone();
+				CraftWorker::spawner()
+					.callback(move |response| {
+						if let Response::Best(done) = response {
+							link.send_message(on_done(worker, done));
+						}
+					})
+					.spawn(WORKER_PATH)
+			})
+			.collect();
+		let queue = recipes
+			.iter()
+			.flat_map(|&recipe| {
+				let cards = &cards;
+				(0..parts).map(move |part| Job {
+					recipe,
+					cards: cards.clone(),
+					part,
+					parts,
+				})
+			})
+			.collect();
+		let mut run = Self {
+			location,
+			cards,
+			workers,
+			idle: (0..parts).rev().collect(),
+			queue,
+		};
+		run.dispatch();
+		run
+	}
+
+	/// How many jobs each recipe is split into.
+	fn parts(&self) -> usize {
+		self.workers.len()
+	}
+
 	/// Hands queued jobs to idle workers.
 	fn dispatch(&mut self) {
 		while let Some(&worker) = self.idle.last() {
 			let Some(job) = self.queue.pop_front() else { break };
 			self.idle.pop();
-			self.workers[worker].send(job);
+			self.workers[worker].send(Request::Best(job));
 		}
 	}
 }
@@ -76,6 +204,24 @@ pub struct App {
 	run: Option<Run>,
 	/// Increases with every run, so results from a cancelled run are ignored.
 	run_id: u32,
+	view: View,
+	/// The deck builder at each location.
+	builders: BTreeMap<Location, Builder>,
+	/// The card being dragged in the deck builder.
+	dragging: Option<DragSource>,
+	/// Where the dragged card would land if dropped now.
+	drop_target: Option<DropTarget>,
+	/// Scores the deck builder's deck. Replacing it cancels the deck it was scoring.
+	stats_worker: Option<WorkerBridge<CraftWorker>>,
+	/// The best deck found for each recipe.
+	best_decks: BTreeMap<usize, KnownBest>,
+	/// The deck builder's best deck search in progress.
+	search: Option<Search>,
+	/// Increases with every search, so results from a stopped search are ignored.
+	search_id: u32,
+	builder_tab: BuilderTab,
+	/// The decks scored in the deck builder, newest first, by recipe name.
+	history: BTreeMap<String, Vec<DeckStats>>,
 }
 
 impl Component for App {
@@ -92,11 +238,22 @@ impl Component for App {
 			results: BTreeMap::new(),
 			run: None,
 			run_id: 0,
+			view: View::Calculator,
+			builders: BTreeMap::new(),
+			dragging: None,
+			drop_target: None,
+			stats_worker: None,
+			best_decks: BTreeMap::new(),
+			search: None,
+			search_id: 0,
+			builder_tab: BuilderTab::Deck,
+			history: load_history(),
 		}
 	}
 
 	fn update(&mut self, ctx: &Context<Self>, msg: Msg) -> bool {
 		match msg {
+			Msg::SetView(view) => self.view = view,
 			Msg::SelectLocation(location) => {
 				if location != self.location {
 					self.location = location;
@@ -110,6 +267,7 @@ impl Component for App {
 				if self.selected.is_some_and(|selected| !self.location_recipes().any(|i| i == selected)) {
 					self.selected = None;
 				}
+				self.fit_builders();
 			}
 			Msg::UseMaximums => {
 				let location = self.location;
@@ -119,6 +277,7 @@ impl Component for App {
 					facility.cards.insert(kind, maximum);
 				}
 				save_inventory(&self.inventory);
+				self.fit_builders();
 			}
 			Msg::SetLevel(kind, level) => {
 				self.owned_mut(kind).level = level;
@@ -127,10 +286,12 @@ impl Component for App {
 			Msg::SetLimit(kind, limit) => {
 				self.owned_mut(kind).limit = limit;
 				save_inventory(&self.inventory);
+				self.fit_builders();
 			}
 			Msg::ResetInventory => {
 				self.inventory = data::default_inventory();
 				LocalStorage::delete(STORAGE_KEY);
+				self.fit_builders();
 			}
 			Msg::SelectRecipe(recipe) => self.selected = recipe,
 			Msg::Calculate => self.start_run(ctx),
@@ -144,6 +305,92 @@ impl Component for App {
 				}
 				self.job_done(worker, done);
 			}
+			Msg::BuilderRecipe(recipe) => {
+				let size = recipe.map_or(0, |recipe| self.recipes[recipe].cards);
+				self.builder_mut().set_recipe(recipe, size);
+			}
+			Msg::BuilderAdd(kind) => {
+				let available = self.available();
+				self.builder_mut().add(&available, kind);
+			}
+			Msg::BuilderRemove(slot) => self.builder_mut().remove(slot),
+			Msg::BuilderClear => self.builder_mut().clear(),
+			Msg::DragStart(source) => self.dragging = Some(source),
+			Msg::DragOver(target) => {
+				// Fires many times a second while hovering, so only redraw on a change
+				if self.dragging.is_none() || self.drop_target == Some(target) {
+					return false;
+				}
+				self.drop_target = Some(target);
+			}
+			Msg::DragLeave(target) => {
+				if self.drop_target != Some(target) {
+					return false;
+				}
+				self.drop_target = None;
+			}
+			Msg::DropCard(target) => {
+				if let Some(source) = self.dragging.take() {
+					let available = self.available();
+					self.builder_mut().drop(&available, source, target);
+				}
+				self.drop_target = None;
+			}
+			Msg::DragEnd => {
+				self.dragging = None;
+				self.drop_target = None;
+			}
+			Msg::ScoreDeck => {
+				if !self.builder().is_full() {
+					return false;
+				}
+				self.score_deck(ctx);
+				// Something to compare the deck with
+				self.find_best(ctx);
+			}
+			Msg::StatsDone(done) => self.stats_done(done),
+			Msg::FindBest => self.find_best(ctx),
+			Msg::StopFindBest => {
+				self.search = None;
+				self.search_id += 1;
+			}
+			Msg::SearchJobDone { search, worker, done } => {
+				if search != self.search_id {
+					return false;
+				}
+				self.search_job_done(worker, done);
+			}
+			Msg::SetBuilderTab(tab) => self.builder_tab = tab,
+			Msg::LoadDeck(index) => {
+				let Some(recipe) = self.builder().recipe else { return false };
+				let Some(entry) = self.history_for(recipe).get(index).cloned() else { return false };
+				let available = self.available();
+				let builder = self.builder_mut();
+				builder.load(&available, &entry.cards);
+				// Its stats still hold if every card is at the same level
+				if builder.deck(&available).as_ref() == Some(&entry.cards) {
+					builder.stats = Some(Stats {
+						recipe,
+						cards: entry.cards.clone(),
+						result: Some(entry),
+					});
+				}
+				self.builder_tab = BuilderTab::Deck;
+			}
+			Msg::RemoveHistory(index) => {
+				let Some(recipe) = self.builder().recipe else { return false };
+				if let Some(entries) = self.history.get_mut(&self.recipes[recipe].name)
+					&& index < entries.len()
+				{
+					entries.remove(index);
+					save_history(&self.history);
+				}
+			}
+			Msg::ClearHistory => {
+				let Some(recipe) = self.builder().recipe else { return false };
+				self.history.remove(&self.recipes[recipe].name);
+				save_history(&self.history);
+			}
 		}
 		true
 	}
@@ -153,7 +400,23 @@ impl Component for App {
 		html! {
 			<>
 				<header class="app-header">
-					<h1>{ "Homestead Crafting Calculator" }</h1>
+					<div class="header-row">
+						<h1>{ "Homestead Crafting Calculator" }</h1>
+						<div class="view-switch" role="group" aria-label="Page">
+							{ for [(View::Calculator, "Best decks"), (View::Builder, "Deck builder")].map(|(view, label)| {
+								let active = view == self.view;
+								html! {
+									<button
+										aria-pressed={active.to_string()}
+										class={classes!("switch", active.then_some("active"))}
+										onclick={link.callback(move |_| Msg::SetView(view))}
+									>
+										{ label }
+									</button>
+								}
+							}) }
+						</div>
+					</div>
 					<nav class="tabs" role="tablist">
 						{ for Location::ALL.iter().map(|&location| {
 							let active = location == self.location;
@@ -172,9 +435,14 @@ impl Component for App {
 					</nav>
 				</header>
 				<main>
-					{ self.view_inventory(ctx) }
-					{ self.view_controls(ctx) }
-					{ self.view_results() }
+					if self.view == View::Builder {
+						{ self.view_builder(ctx) }
+						{ self.view_inventory(ctx) }
+					} else {
+						{ self.view_inventory(ctx) }
+						{ self.view_controls(ctx) }
+						{ self.view_results() }
+					}
 				</main>
 			</>
 		}
@@ -190,15 +458,160 @@ impl App {
 		self.inventory.get(&self.location).cloned().unwrap_or_default()
 	}
 
-	/// Indices of the recipes made at the current location.
 	/// Indices of the recipes made at the current location that its facility level has unlocked.
 	fn location_recipes(&self) -> impl Iterator<Item = usize> + '_ {
-		let facility = self.inventory.get(&self.location);
-		(0..self.recipes.len()).filter(move |&i| {
-			let recipe = &self.recipes[i];
-			recipe.location == self.location
-				&& facility.is_none_or(|facility| facility.recipe_unlocked(&self.facilities, recipe))
-		})
+		(0..self.recipes.len())
+			.filter(move |&i| self.recipes[i].location == self.location && self.recipe_unlocked(i))
+	}
+
+	/// Whether the facility level at the recipe's location has unlocked it.
+	fn recipe_unlocked(&self, recipe: usize) -> bool {
+		let recipe = &self.recipes[recipe];
+		self.inventory
+			.get(&recipe.location)
+			.is_none_or(|facility| facility.recipe_unlocked(&self.facilities, recipe))
+	}
+
+	/// The cards that may be used at the current location, with how many copies of each.
+	fn available(&self) -> Vec<(Card, usize)> {
+		available_cards(&self.inventory, &self.facilities, self.location)
+	}
+
+	fn builder(&self) -> &Builder {
+		self.builders.get(&self.location).unwrap_or(&EMPTY_BUILDER)
+	}
+
+	fn builder_mut(&mut self) -> &mut Builder {
+		self.builders.entry(self.location).or_default()
+	}
+
+	/// Keeps every deck builder to what the inventory and facility levels allow,
+	/// after they change.
+	fn fit_builders(&mut self) {
+		for location in Location::ALL {
+			let available = available_cards(&self.inventory, &self.facilities, location);
+			let locked = self
+				.builders
+				.get(&location)
+				.and_then(|builder| builder.recipe)
+				.is_some_and(|recipe| !self.recipe_unlocked(recipe));
+			let Some(builder) = self.builders.get_mut(&location) else { continue };
+			if locked {
+				builder.set_recipe(None, 0);
+			}
+			builder.fit(&available);
+		}
+	}
+
+	/// Starts scoring the deck builder's deck in a worker.
+	fn score_deck(&mut self, ctx: &Context<Self>) {
+		let available = self.available();
+		let builder = self.builder();
+		let (Some(recipe), Some(cards)) = (builder.recipe, builder.deck(&available)) else {
+			return;
+		};
+		if builder.current_stats(&available).is_some_and(|stats| stats.result.is_none()) {
+			// Already being scored
+			return;
+		}
+
+		// The new worker replaces the old one, which cancels any deck it was scoring
+		for builder in self.builders.values_mut() {
+			if builder.stats.as_ref().is_some_and(|stats| stats.result.is_none()) {
+				builder.stats = None;
+			}
+		}
+		let link = ctx.link().clone();
+		let worker = CraftWorker::spawner()
+			.callback(move |response| {
+				if let Response::Stats(done) = response {
+					link.send_message(Msg::StatsDone(done));
+				}
+			})
+			.spawn(WORKER_PATH);
+		worker.send(Request::Stats(StatsJob {
+			recipe,
+			cards: cards.clone(),
+		}));
+		self.stats_worker = Some(worker);
+		self.builder_mut().stats = Some(Stats {
+			recipe,
+			cards,
+			result: None,
+		});
+	}
+
+	fn stats_done(&mut self, done: StatsDone) {
+		let location = self.recipes[done.recipe].location;
+		let Some(stats) = self.builders.get_mut(&location).and_then(|builder| builder.stats.as_mut()) else {
+			return;
+		};
+		if stats.recipe == done.recipe && stats.cards == done.stats.cards && stats.result.is_none() {
+			let name = self.recipes[done.recipe].name.clone();
+			builder::record(self.history.entry(name).or_default(), done.stats.clone());
+			save_history(&self.history);
+			stats.result = Some(done.stats);
+			// Done with the worker
+			self.stats_worker = None;
+		}
+	}
+
+	/// The decks scored for `recipe`, newest first.
+	fn history_for(&self, recipe: usize) -> &[DeckStats] {
+		self.history.get(&self.recipes[recipe].name).map(Vec::as_slice).unwrap_or_default()
+	}
+
+	/// The best deck for `recipe` from the cards available now, if it's been found.
+	fn known_best(&self, recipe: usize) -> Option<&KnownBest> {
+		let cards = available_cards(&self.inventory, &self.facilities, self.recipes[recipe].location);
+		self.best_decks.get(&recipe).filter(|known| known.cards == cards)
+	}
+
+	/// The search in progress for `recipe`'s best deck from the cards available now.
+	fn current_search(&self, recipe: usize) -> Option<&Search> {
+		let cards = available_cards(&self.inventory, &self.facilities, self.recipes[recipe].location);
+		self.search.as_ref().filter(|search| search.recipe == recipe && search.run.cards == cards)
+	}
+
+	/// Starts finding the best deck for the deck builder's recipe, unless it's
+	/// already known or being found. Stops any search for another recipe.
+	fn find_best(&mut self, ctx: &Context<Self>) {
+		let Some(recipe) = self.builder().recipe else { return };
+		if self.known_best(recipe).is_some() || self.current_search(recipe).is_some() {
+			return;
+		}
+		self.search_id += 1;
+		let search_id = self.search_id;
+		let run = Run::start(ctx.link(), self.location, self.available(), &[recipe], move |worker, done| {
+			Msg::SearchJobDone { search: search_id, worker, done }
+		});
+		self.search = Some(Search {
+			recipe,
+			jobs_left: run.parts(),
+			run,
+			best: None,
+		});
+	}
+
+	fn search_job_done(&mut self, worker: usize, done: JobDone) {
+		let Some(search) = &mut self.search else { return };
+		search.jobs_left = search.jobs_left.saturating_sub(1);
+		if let Some(best) = done.best
+			&& search.best.as_ref().is_none_or(|current| best.beats(current))
+		{
+			search.best = Some(best);
+		}
+		search.run.idle.push(worker);
+		search.run.dispatch();
+		if search.jobs_left == 0
+			&& let Some(search) = self.search.take()
+		{
+			// Dropping the run shuts its workers down
+			self.best_decks.insert(search.recipe, KnownBest {
+				cards: search.run.cards,
+				best: search.best,
+			});
+		}
 	}
 
 	/// How many recipes at the current location aren't unlocked yet.
@@ -215,52 +628,22 @@ impl App {
 			Some(recipe) => vec![recipe],
 			None => self.location_recipes().collect(),
 		};
-		let cards = available_cards(&self.inventory, &self.facilities, self.location);
-
 		self.run_id += 1;
 		let run_id = self.run_id;
-		let workers = worker_count();
-		let bridges = (0..workers)
-			.map(|worker| {
-				let link = ctx.link().clone();
-				CraftWorker::spawner()
-					.callback(move |done| link.send_message(Msg::JobDone { run: run_id, worker, done }))
-					.spawn(WORKER_PATH)
-			})
-			.collect();
-
-		let queue = recipes
-			.iter()
-			.flat_map(|&recipe| {
-				let cards = &cards;
-				(0..workers).map(move |part| Job {
-					recipe,
-					cards: cards.clone(),
-					part,
-					parts: workers,
-				})
-			})
-			.collect();
-
+		let run = Run::start(ctx.link(), self.location, self.available(), &recipes, move |worker, done| {
+			Msg::JobDone { run: run_id, worker, done }
+		});
 		self.results.insert(
 			self.location,
 			recipes
 				.iter()
 				.map(|&recipe| RecipeResult {
 					recipe,
-					jobs_left: workers,
+					jobs_left: run.parts(),
 					best: None,
 				})
 				.collect(),
 		);
-
-		let mut run = Run {
-			location: self.location,
-			workers: bridges,
-			idle: (0..workers).rev().collect(),
-			queue,
-		};
-		run.dispatch();
 		self.run = Some(run);
 	}
 
@@ -273,6 +656,13 @@ impl App {
 				&& row.best.as_ref().is_none_or(|current| best.beats(current))
 			{
 				row.best = Some(best);
+			}
+			if row.jobs_left == 0 {
+				// Lets the deck builder compare against it
+				self.best_decks.insert(row.recipe, KnownBest {
+					cards: run.cards.clone(),
+					best: row.best.clone(),
+				});
 			}
 		}
 
@@ -508,12 +898,10 @@ impl App {
 			}
 		};
 		let summary = row.best.as_ref().filter(|_| row.jobs_left == 0).map(|best| {
-			let earned = recipe.stars(best.average);
-			let stars = format!("{}{}", "★".repeat(earned), "☆".repeat(recipe.stars.len() - earned));
 			html! {
 				<div class="recipe-summary">
 					{ format!("Avg {} ", best.average) }
-					<span class="stars" aria-label={format!("{earned} of {} stars", recipe.stars.len())}>{ stars }</span>
+					{ view_stars(recipe, best.average) }
 				</div>
 			}
 		});
@@ -533,6 +921,607 @@ impl App {
 			</tr>
 		}
 	}
+}
+
+/// The deck builder.
+impl App {
+	fn view_builder(&self, ctx: &Context<Self>) -> Html {
+		let builder = self.builder();
+		let on_recipe = ctx.link().callback(|e: Event| {
+			let value = e.target_unchecked_into::<HtmlSelectElement>().value();
+			Msg::BuilderRecipe(value.parse().ok())
+		});
+
+		html! {
+			<section
+				class={classes!("panel", "builder", self.dragging.is_some().then_some("is-dragging"))}
+				aria-labelledby="builder-heading"
+			>
+				<div class="heading-with-image">
+					{ image(images::facility(self.location), "facility-image") }
+					<h2 id="builder-heading">{ format!("{} deck builder", self.location.name()) }</h2>
+				</div>
+				<p class="hint">
+					{ "Pick a recipe and fill its deck with your cards, then score it. Card levels and copies come from the cards further down." }
+				</p>
+				<label class="recipe-select">
+					<span>{ "Recipe" }</span>
+					<select onchange={on_recipe}>
+						<option value="" selected={builder.recipe.is_none()}>{ "Choose a recipe…" }</option>
+						{ for self.location_recipes().map(|i| html! {
+							<option value={i.to_string()} selected={builder.recipe == Some(i)}>
+								{ &self.recipes[i].name }
+							</option>
+						}) }
+					</select>
+				</label>
+				if let Some(recipe) = builder.recipe {
+					{ self.view_builder_recipe(recipe) }
+					<nav class="tabs builder-tabs" role="tablist" aria-label="Deck builder">
+						{ for [
+							(BuilderTab::Deck, "Deck".to_string()),
+							(BuilderTab::History, format!("History ({})", self.history_for(recipe).len())),
+						].into_iter().map(|(tab, label)| {
+							let active = tab == self.builder_tab;
+							html! {
+								<button
+									role="tab"
+									aria-selected={active.to_string()}
+									class={classes!("tab", active.then_some("active"))}
+									onclick={ctx.link().callback(move |_| Msg::SetBuilderTab(tab))}
+								>
+									{ label }
+								</button>
+							}
+						}) }
+					</nav>
+					if self.builder_tab == BuilderTab::Deck {
+						{ self.view_builder_deck(ctx, builder, recipe) }
+					} else {
+						{ self.view_history(ctx.link(), builder, recipe) }
+					}
+				}
+			</section>
+		}
+	}
+
+	/// The selected recipe: its image, name, card count, star thresholds and power.
+	fn view_builder_recipe(&self, recipe: usize) -> Html {
+		let recipe = &self.recipes[recipe];
+		html! {
+			<div class="recipe-info">
+				{ image(images::recipe(recipe), "recipe-info-image") }
+				<div class="recipe-info-text">
+					<h3>{ &recipe.name }</h3>
+					<p class="muted">
+						{ format!("{} cards", recipe.cards) }
+						{ for recipe.stars.iter().enumerate().map(|(i, threshold)| html! {
+							<span class="threshold">
+								<span class="stars" aria-label={format!("{} stars at", i + 1)}>{ str::repeat("★", i + 1) }</span>
+								{ format!(" {threshold}") }
+							</span>
+						}) }
+					</p>
+					<p class={classes!("power", recipe.power().is_none().then_some("none"))}>
+						<span class="power-label">{ "Power" }</span>
+						{ recipe.power().unwrap_or("None known") }
+					</p>
+				</div>
+			</div>
+		}
+	}
+
+	/// The available cards, the deck's slots, and scoring.
+	fn view_builder_deck(&self, ctx: &Context<Self>, builder: &Builder, recipe: usize) -> Html {
+		let link = ctx.link();
+		let available = self.available();
+		let filled = builder.slots.iter().flatten().count();
+		let stats = builder.current_stats(&available);
+		let scoring = stats.is_some_and(|stats| stats.result.is_none());
+		let inventory_target = self.dragging.is_some_and(|source| matches!(source, DragSource::Slot(_)))
+			&& self.drop_target == Some(DropTarget::Inventory);
+		let (ondragover, ondragleave, ondrop) = drop_handlers(link, DropTarget::Inventory);
+
+		let status = if !builder.is_full() {
+			let left = builder.slots.len() - filled;
+			format!("Add {left} more {} to score the deck.", if left == 1 { "card" } else { "cards" })
+		} else if scoring {
+			"Scoring every play order…".to_string()
+		} else {
+			String::new()
+		};
+
+		html! {
+			<>
+				<h3 class="subheading">{ "Available cards" }</h3>
+				<p class="hint">
+					{ "Drag a card into a slot, or click it to fill the next empty slot. Drag a deck card back here, or click it, to take it out." }
+				</p>
+				<div
+					class={classes!("builder-inventory", inventory_target.then_some("drop-active"))}
+					{ondragover}
+					{ondragleave}
+					{ondrop}
+				>
+					if available.is_empty() {
+						<p class="muted">{ "No cards are available here. Give some cards a limit above 0 below." }</p>
+					}
+					{ for available.iter().map(|&(card, limit)| self.view_builder_card(link, builder, card, limit)) }
+				</div>
+
+				<h3 class="subheading">{ format!("Deck: {filled} of {} cards", builder.slots.len()) }</h3>
+				<ol class="slots">
+					{ for builder.slots.iter().enumerate().map(|(i, &slot)| {
+						let card = slot.and_then(|kind| available.iter().find(|(card, _)| card.kind == kind).map(|&(card, _)| card));
+						self.view_slot(link, i, card)
+					}) }
+				</ol>
+
+				<div class="builder-actions">
+					<button
+						class="button primary"
+						disabled={!builder.is_full() || scoring}
+						onclick={link.callback(|_| Msg::ScoreDeck)}
+					>
+						{ if stats.is_some_and(|stats| stats.result.is_some()) { "Score again" } else { "Score deck" } }
+					</button>
+					<button class="button subtle" disabled={filled == 0} onclick={link.callback(|_| Msg::BuilderClear)}>
+						{ "Clear deck" }
+					</button>
+					<span class="status" aria-live="polite">{ status }</span>
+				</div>
+
+				if let Some(result) = stats.and_then(|stats| stats.result.as_ref()) {
+					{ self.view_stats(link, recipe, result) }
+				}
+			</>
+		}
+	}
+
+	/// One of the location's available cards, with how many copies are left.
+	fn view_builder_card(&self, link: &Scope<Self>, builder: &Builder, card: Card, limit: usize) -> Html {
+		let kind = card.kind;
+		let remaining = limit.saturating_sub(builder.count(kind));
+		let usable = remaining > 0;
+		let dragging = self.dragging == Some(DragSource::Inventory(kind));
+		let title = if usable {
+			"Drag into a slot, or click to add"
+		} else {
+			"Every copy is in the deck"
+		};
+
+		html! {
+			<div
+				class={classes!("builder-card", (!usable).then_some("used-up"), dragging.then_some("dragging"))}
+				role="button"
+				tabindex={if usable { "0" } else { "-1" }}
+				aria-disabled={(!usable).to_string()}
+				aria-label={format!("{} level {}, {remaining} of {limit} left", kind.name(), card.level)}
+				{title}
+				draggable={usable.to_string()}
+				ondragstart={link.callback(move |e: DragEvent| {
+					start_drag(&e);
+					Msg::DragStart(DragSource::Inventory(kind))
+				})}
+				ondragend={link.callback(|_: DragEvent| Msg::DragEnd)}
+				onclick={link.callback(move |_| Msg::BuilderAdd(kind))}
+				onkeydown={on_activate(link, move || Msg::BuilderAdd(kind))}
+			>
+				{ image(images::card(kind), "builder-card-image") }
+				<span class="card-name">{ kind.name() }</span>
+				<span class="level">{ format!("Lv {}", card.level) }</span>
+				<span class="copies">{ format!("{remaining} of {limit} left") }</span>
+			</div>
+		}
+	}
+
+	/// A deck slot, empty or holding `card`.
+	fn view_slot(&self, link: &Scope<Self>, slot: usize, card: Option<Card>) -> Html {
+		let target = DropTarget::Slot(slot);
+		let over = self.drop_target == Some(target);
+		let dragging = self.dragging == Some(DragSource::Slot(slot));
+		let (ondragover, ondragleave, ondrop) = drop_handlers(link, target);
+
+		html! {
+			<li
+				class={classes!(
+					"slot",
+					card.is_none().then_some("empty"),
+					over.then_some("drop-active"),
+					dragging.then_some("dragging"),
+				)}
+				{ondragover}
+				{ondragleave}
+				{ondrop}
+			>
+				<span class="slot-number">{ slot + 1 }</span>
+				if let Some(card) = card {
+					<div
+						class="slot-card"
+						role="button"
+						tabindex="0"
+						aria-label={format!("Slot {}: {} level {}. Take out", slot + 1, card.kind.name(), card.level)}
+						title="Drag to another slot, or click to take out"
+						draggable="true"
+						ondragstart={link.callback(move |e: DragEvent| {
+							start_drag(&e);
+							Msg::DragStart(DragSource::Slot(slot))
+						})}
+						ondragend={link.callback(|_: DragEvent| Msg::DragEnd)}
+						onclick={link.callback(move |_| Msg::BuilderRemove(slot))}
+						onkeydown={on_activate(link, move || Msg::BuilderRemove(slot))}
+					>
+						{ image(images::card(card.kind), "builder-card-image") }
+						<span class="card-name">{ card.kind.name() }</span>
+						<span class="level">{ format!("Lv {}", card.level) }</span>
+					</div>
+				} else {
+					<span class="slot-empty">{ "Empty" }</span>
+				}
+			</li>
+		}
+	}
+
+	fn view_stats(&self, link: &Scope<Self>, recipe_index: usize, stats: &DeckStats) -> Html {
+		let recipe = &self.recipes[recipe_index];
+		let played = |label: &str, played: &crate::deck::Played| {
+			html! {
+				<div class="stat">
+					<span class="stat-label">{ label }</span>
+					<span class="stat-value">{ played.total() }</span>
+					<span class="stat-detail">
+						{ format!("{} × {} ", played.left, played.right) }
+						{ view_stars(recipe, played.total()) }
+					</span>
+				</div>
+			}
+		};
+		html! {
+			<div class="stats">
+				<h3 class="subheading">{ "Deck stats" }</h3>
+				<div class="stat-grid">
+					<div class="stat">
+						<span class="stat-label">{ "Average" }</span>
+						<span class="stat-value">{ stats.average }</span>
+						<span class="stat-detail">{ view_stars(recipe, stats.average) }</span>
+					</div>
+					{ played("Lowest", &stats.minimum) }
+					{ played("Highest", &stats.maximum) }
+					<div class="stat">
+						<span class="stat-label">{ "Play orders" }</span>
+						<span class="stat-value">{ stats.orders }</span>
+						<span class="stat-detail">{ "distinct orders scored" }</span>
+					</div>
+				</div>
+
+				{ self.view_comparison(link, recipe_index, stats) }
+
+				if !recipe.stars.is_empty() {
+					<h4>{ "Chance of each star" }</h4>
+					<ul class="star-chances">
+						{ for stats.star_orders.iter().enumerate().map(|(i, &count)| {
+							let share = count as f64 / stats.orders.max(1) as f64 * 100.0;
+							html! {
+								<li>
+									<span class="stars">{ str::repeat("★", i + 1) }</span>
+									<span class="muted">{ format!("{}+", recipe.stars[i]) }</span>
+									<span class="meter" aria-hidden="true">
+										<span class="meter-fill" style={format!("width: {share:.1}%")}></span>
+									</span>
+									<span class="share">{ percent(share) }</span>
+								</li>
+							}
+						}) }
+					</ul>
+				}
+
+				<h4>{ "Highest-scoring play order" }</h4>
+				{ view_order(&stats.maximum.order) }
+				<h4>{ "Lowest-scoring play order" }</h4>
+				{ view_order(&stats.minimum.order) }
+				<p class="hint">
+					{ "Random effects are rolled once per play order, so scores can change a little each time the deck is scored." }
+				</p>
+			</div>
+		}
+	}
+
+	/// How a scored deck compares with the best deck for its recipe, or the
+	/// search for the best deck while it runs.
+	fn view_comparison(&self, link: &Scope<Self>, recipe_index: usize, stats: &DeckStats) -> Html {
+		let recipe = &self.recipes[recipe_index];
+		let body = match self.known_best(recipe_index) {
+			Some(KnownBest { best: Some(best), .. }) => {
+				let difference = stats.average - best.average;
+				let tone = match difference.signum() {
+					-1 => "behind",
+					1 => "ahead",
+					_ => "even",
+				};
+				let share = (best.average > 0).then(|| stats.average as f64 / best.average as f64 * 100.0);
+				let (take_out, put_in) = builder::card_difference(&stats.cards, &best.cards);
+				html! {
+					<>
+						<div class="stat-grid compare-grid">
+							<div class="stat">
+								<span class="stat-label">{ "Your average" }</span>
+								<span class="stat-value">{ stats.average }</span>
+								<span class="stat-detail">{ view_stars(recipe, stats.average) }</span>
+							</div>
+							<div class="stat">
+								<span class="stat-label">{ "Best average" }</span>
+								<span class="stat-value">{ best.average }</span>
+								<span class="stat-detail">{ view_stars(recipe, best.average) }</span>
+							</div>
+							<div class={classes!("stat", "difference", tone)}>
+								<span class="stat-label">{ "Difference" }</span>
+								<span class="stat-value">{ format!("{difference:+}") }</span>
+								<span class="stat-detail">
+									{ share.map_or(String::new(), |share| format!("{share:.1}% of the best")) }
+								</span>
+							</div>
+						</div>
+						if take_out.is_empty() && put_in.is_empty() {
+							<p class="compare-note">
+								{ "This is the best deck for your cards." }
+								if difference != 0 {
+									{ " The averages differ only by random rolls." }
+								}
+							</p>
+						} else {
+							<div class="swaps">
+								<div class="swap">
+									<span class="swap-label">{ "Best deck" }</span>
+									{ view_cards(&best.cards) }
+								</div>
+								<div class="swap">
+									<span class="swap-label">{ "Take out" }</span>
+									{ view_cards(&take_out) }
+								</div>
+								<div class="swap">
+									<span class="swap-label">{ "Put in" }</span>
+									{ view_cards(&put_in) }
+								</div>
+							</div>
+						}
+					</>
+				}
+			}
+			Some(KnownBest { best: None, .. }) => html! {
+				<p class="muted">{ "There aren't enough cards to find a best deck for this recipe." }</p>
+			},
+			None => match self.current_search(recipe_index) {
+				Some(search) => {
+					let parts = search.run.parts();
+					html! {
+						<div class="builder-actions">
+							<span class="status" aria-live="polite">
+								{ format!("Finding the best deck… {} of {parts} parts done", parts - search.jobs_left) }
+							</span>
+							<button class="button subtle" onclick={link.callback(|_| Msg::StopFindBest)}>{ "Stop" }</button>
+						</div>
+					}
+				}
+				None => html! {
+					<div class="builder-actions">
+						<span class="muted">{ "The best deck for your current cards hasn't been found yet." }</span>
+						<button class="button subtle" onclick={link.callback(|_| Msg::FindBest)}>{ "Find best deck" }</button>
+					</div>
+				},
+			},
+		};
+
+		html! {
+			<div class="comparison">
+				<h4>{ "Compared with the best deck" }</h4>
+				{ body }
+			</div>
+		}
+	}
+
+	/// A summary of every deck scored for the recipe, newest first.
+	fn view_history(&self, link: &Scope<Self>, builder: &Builder, recipe_index: usize) -> Html {
+		let recipe = &self.recipes[recipe_index];
+		let entries = self.history_for(recipe_index);
+		if entries.is_empty() {
+			return html! {
+				<p class="hint history-empty">
+					{ format!("Decks you score for {} are listed here, so you can compare them.", recipe.name) }
+				</p>
+			};
+		}
+
+		let available = self.available();
+		let current = builder.deck(&available);
+		let best = self.known_best(recipe_index).and_then(|known| known.best.as_ref());
+		let top = entries.iter().map(|entry| entry.average).max();
+		let top_star = recipe.stars.len();
+
+		html! {
+			<div class="history">
+				<div class="history-header">
+					<p class="hint">
+						{ format!(
+							"{} {} scored, newest first. Saved in this browser.",
+							entries.len(),
+							if entries.len() == 1 { "deck" } else { "decks" },
+						) }
+					</p>
+					<button class="button subtle" onclick={link.callback(|_| Msg::ClearHistory)}>{ "Clear history" }</button>
+				</div>
+				<div class="table-wrap">
+					<table class="results history-table">
+						<thead>
+							<tr>
+								<th scope="col">{ "Deck" }</th>
+								<th scope="col" class="number">{ "Average" }</th>
+								<th scope="col" class="number">{ "Lowest" }</th>
+								<th scope="col" class="number">{ "Highest" }</th>
+								if top_star > 0 {
+									<th scope="col" class="number">{ format!("{top_star}★ chance") }</th>
+								}
+								<th scope="col" class="number">{ "vs best" }</th>
+								<th scope="col"><span class="visually-hidden">{ "Actions" }</span></th>
+							</tr>
+						</thead>
+						<tbody>
+							{ for entries.iter().enumerate().map(|(i, entry)| {
+								let is_current = current.as_ref() == Some(&entry.cards);
+								let is_top = top == Some(entry.average);
+								// Scored with card levels that have changed since
+								let outdated = entry.cards.iter().any(|card| {
+									available.iter().find(|(owned, _)| owned.kind == card.kind).map(|(owned, _)| owned.level)
+										!= Some(card.level)
+								});
+								let top_share = entry.star_orders.last().map(|&count| {
+									percent(count as f64 / entry.orders.max(1) as f64 * 100.0)
+								});
+								html! {
+									<tr class={classes!(is_current.then_some("current"))}>
+										<td>
+											{ view_cards(&entry.cards) }
+											<div class="tags">
+												if is_current {
+													<span class="tag">{ "In the builder" }</span>
+												}
+												if is_top {
+													<span class="tag good">{ "Highest average" }</span>
+												}
+												if outdated {
+													<span class="tag muted" title="Some card levels have changed since this deck was scored">
+														{ "Older card levels" }
+													</span>
+												}
+											</div>
+										</td>
+										<td class="number">
+											<div class="strong">{ entry.average }</div>
+											{ view_stars(recipe, entry.average) }
+										</td>
+										<td class="number">{ entry.minimum.total() }</td>
+										<td class="number">{ entry.maximum.total() }</td>
+										if top_star > 0 {
+											<td class="number">{ top_share.unwrap_or_default() }</td>
+										}
+										<td class="number">
+											{ match best {
+												Some(best) => html! {
+													<span class={classes!(match (entry.average - best.average).signum() {
+														-1 => "behind",
+														1 => "ahead",
+														_ => "even",
+													})}>
+														{ format!("{:+}", entry.average - best.average) }
+													</span>
+												},
+												None => html! { <span class="muted" title="The best deck for your current cards hasn't been found yet">{ "–" }</span> },
+											} }
+										</td>
+										<td class="actions">
+											<button class="button subtle" onclick={link.callback(move |_| Msg::LoadDeck(i))}>
+												{ "Load" }
+											</button>
+											<button
+												class="button subtle"
+												aria-label="Remove from history"
+												title="Remove from history"
+												onclick={link.callback(move |_| Msg::RemoveHistory(i))}
+											>
+												{ "✕" }
+											</button>
+										</td>
+									</tr>
+								}
+							}) }
+						</tbody>
+					</table>
+				</div>
+			</div>
+		}
+	}
+}
+
+/// A share of play orders as a percentage, without rounding a few orders down to 0%.
+fn percent(share: f64) -> String {
+	if share > 0.0 && share < 1.0 {
+		"<1%".to_string()
+	} else if share < 100.0 && share > 99.0 {
+		">99%".to_string()
+	} else {
+		format!("{share:.0}%")
+	}
+}
+
+/// The stars `score` earns for `recipe`, filled, then the ones it doesn't, hollow.
+fn view_stars(recipe: &Recipe, score: i64) -> Html {
+	let earned = recipe.stars(score);
+	let total = recipe.stars.len();
+	html! {
+		<span class="stars" aria-label={format!("{earned} of {total} stars")}>
+			{ format!("{}{}", "★".repeat(earned), "☆".repeat(total - earned)) }
+		</span>
+	}
+}
+
+/// Cards in the order they're played.
+fn view_order(cards: &[Card]) -> Html {
+	html! {
+		<ol class="deck play-order">
+			{ for cards.iter().map(|card| html! {
+				<li class="chip">
+					{ image(images::card(card.kind), "chip-image") }
+					<span>{ card.kind.name() }</span>
+					<span class="level">{ format!("Lv {}", card.level) }</span>
+				</li>
+			}) }
+		</ol>
+	}
+}
+
+/// Sets up a drag so every browser starts it.
+fn start_drag(e: &DragEvent) {
+	if let Some(data) = e.data_transfer() {
+		// Firefox won't start a drag without some data
+		let _ = data.set_data("text/plain", "");
+		data.set_effect_allowed("move");
+	}
+}
+
+/// The dragover, dragleave and drop handlers for somewhere a card can be dropped.
+fn drop_handlers(
+	link: &Scope<App>,
+	target: DropTarget,
+) -> (Callback<DragEvent>, Callback<DragEvent>, Callback<DragEvent>) {
+	let over = link.callback(move |e: DragEvent| {
+		// Allows dropping here
+		e.prevent_default();
+		Msg::DragOver(target)
+	});
+	let leave = link.batch_callback(move |e: DragEvent| {
+		// Moving onto a child element also fires dragleave: only leave when the
+		// pointer has left this element altogether
+		let current = e.current_target()?.unchecked_into::<Node>();
+		let related = e.related_target().map(|related| related.unchecked_into::<Node>());
+		(!current.contains(related.as_ref())).then_some(Msg::DragLeave(target))
+	});
+	let drop = link.callback(move |e: DragEvent| {
+		// Stops the browser opening the dragged data as a page
+		e.prevent_default();
+		Msg::DropCard(target)
+	});
+	(over, leave, drop)
+}
+
+/// A keydown handler that acts like a click for Enter and Space, for elements
+/// that act as buttons but can't be `<button>`s, because Firefox won't drag those.
+fn on_activate(link: &Scope<App>, msg: impl Fn() -> Msg + 'static) -> Callback<KeyboardEvent> {
+	link.batch_callback(move |e: KeyboardEvent| {
+		let activate = e.key() == "Enter" || e.key() == " ";
+		if activate {
+			e.prevent_default();
+		}
+		activate.then(&msg)
+	})
 }
 
 /// Lists a deck's cards, with repeated cards shown once with a count.
@@ -598,5 +1587,21 @@ fn save_inventory(inventory: &Inventory) {
 	if let Ok(text) = ron::to_string(inventory) {
 		// Not being able to save (e.g. storage disabled) only loses the edit on reload
 		let _ = LocalStorage::set(STORAGE_KEY, text);
+	}
+}
+
+/// The deck builder's history saved in this browser, or an empty one if there's
+/// none or it can't be read.
+fn load_history() -> BTreeMap<String, Vec<DeckStats>> {
+	LocalStorage::get::<String>(HISTORY_KEY)
+		.ok()
+		.and_then(|text| ron::from_str(&text).ok())
+		.unwrap_or_default()
+}
+
+fn save_history(history: &BTreeMap<String, Vec<DeckStats>>) {
+	if let Ok(text) = ron::to_string(history) {
+		// Not being able to save only loses the history on reload
+		let _ = LocalStorage::set(HISTORY_KEY, text);
 	}
 }

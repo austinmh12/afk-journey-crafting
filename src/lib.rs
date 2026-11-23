@@ -1,6 +1,7 @@
 //! Scoring for AFK Journey homestead crafting, shared by the command line
 //! calculator and the web front end.
 
+pub mod builder;
 pub mod card;
 pub mod deck;
 pub mod facility;

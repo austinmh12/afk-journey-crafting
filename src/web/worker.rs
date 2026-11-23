@@ -3,12 +3,15 @@
 //! The page runs one worker per CPU core and splits each recipe into one
 //! [`Job`] per worker: job `part` of `parts` scores every `parts`-th deck,
 //! starting at deck `part`. The page then keeps the best of each job's results.
+//!
+//! The deck builder also asks a worker for the stats of one deck with
+//! [`Request::Stats`].
 
 use gloo_worker::{HandlerId, Worker, WorkerScope};
 use serde::{Deserialize, Serialize};
 
 use crate::card::Card;
-use crate::deck::{beats, generate_decks};
+use crate::deck::{Deck, DeckStats, beats, generate_decks};
 use crate::recipe::Recipe;
 use crate::tables::CardTables;
 
@@ -48,6 +51,32 @@ pub struct JobDone {
 	pub best: Option<BestDeck>,
 }
 
+/// Score every play order of one deck for the deck builder.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatsJob {
+	/// Index into [`super::data::recipes`].
+	pub recipe: usize,
+	pub cards: Vec<Card>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatsDone {
+	pub recipe: usize,
+	pub stats: DeckStats,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Request {
+	Best(Job),
+	Stats(StatsJob),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Response {
+	Best(JobDone),
+	Stats(StatsDone),
+}
+
 pub struct CraftWorker {
 	recipes: Vec<Recipe>,
 	tables: CardTables,
@@ -55,8 +84,8 @@ pub struct CraftWorker {
 
 impl Worker for CraftWorker {
 	type Message = ();
-	type Input = Job;
-	type Output = JobDone;
+	type Input = Request;
+	type Output = Response;
 
 	fn create(_scope: &WorkerScope<Self>) -> Self {
 		Self {
@@ -67,7 +96,17 @@ impl Worker for CraftWorker {
 
 	fn update(&mut self, _scope: &WorkerScope<Self>, _msg: Self::Message) {}
 
-	fn received(&mut self, scope: &WorkerScope<Self>, job: Job, id: HandlerId) {
+	fn received(&mut self, scope: &WorkerScope<Self>, request: Request, id: HandlerId) {
+		let response = match request {
+			Request::Best(job) => Response::Best(self.best(job)),
+			Request::Stats(job) => Response::Stats(self.stats(job)),
+		};
+		scope.respond(id, response);
+	}
+}
+
+impl CraftWorker {
+	fn best(&self, job: Job) -> JobDone {
 		let recipe = &self.recipes[job.recipe];
 		let mut rng = rand::rng();
 		let mut best: Option<BestDeck> = None;
@@ -80,6 +119,12 @@ impl Worker for CraftWorker {
 			}
 		}
 
-		scope.respond(id, JobDone { recipe: job.recipe, best });
+		JobDone { recipe: job.recipe, best }
+	}
+
+	fn stats(&self, job: StatsJob) -> StatsDone {
+		let deck = Deck { cards: job.cards };
+		let stats = deck.stats(&self.recipes[job.recipe], &self.tables, &mut rand::rng());
+		StatsDone { recipe: job.recipe, stats }
 	}
 }

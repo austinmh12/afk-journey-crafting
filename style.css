@@ -10,6 +10,8 @@
 	--accent-text: #ffffff;
 	--accent-soft: #e2efe9;
 	--star: #b7791f;
+	--good: #2f7a3e;
+	--bad: #b3402e;
 	--radius: 8px;
 	font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 	font-size: 15px;
@@ -28,6 +30,8 @@
 		--accent-text: #0f1f1a;
 		--accent-soft: #23362f;
 		--star: #e3b04b;
+		--good: #7ccf8a;
+		--bad: #f08a76;
 	}
 }
 
@@ -417,4 +421,569 @@ button:focus-visible {
 
 input:disabled {
 	opacity: 0.5;
+}
+
+/* ---------- Page switch ---------- */
+
+.header-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px 16px;
+}
+
+.view-switch {
+	display: inline-flex;
+	padding: 3px;
+	gap: 2px;
+	border-radius: 8px;
+	background: var(--surface-2);
+}
+
+.switch {
+	appearance: none;
+	border: 0;
+	background: none;
+	color: var(--muted);
+	font: inherit;
+	font-size: 0.9rem;
+	font-weight: 600;
+	padding: 5px 12px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.switch:hover {
+	color: var(--text);
+}
+
+.switch.active {
+	background: var(--surface);
+	color: var(--accent);
+	box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+
+/* ---------- Deck builder ---------- */
+
+.builder .recipe-select {
+	margin-bottom: 4px;
+}
+
+.builder h2 + .hint,
+.builder .heading-with-image + .hint {
+	margin-top: 8px;
+}
+
+.subheading {
+	font-size: 0.95rem;
+	margin: 18px 0 6px;
+}
+
+.builder h4 {
+	font-size: 0.85rem;
+	margin: 16px 0 6px;
+	color: var(--muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.builder .subheading + .hint {
+	margin-top: 0;
+}
+
+.recipe-info {
+	display: flex;
+	align-items: flex-start;
+	gap: 14px;
+	margin-top: 14px;
+	padding: 12px;
+	border-radius: var(--radius);
+	background: var(--surface-2);
+}
+
+.recipe-info-image {
+	width: 72px;
+	height: 72px;
+	border-radius: 6px;
+}
+
+.recipe-info-text {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+}
+
+.recipe-info-text h3 {
+	margin: 0;
+	font-size: 1.1rem;
+}
+
+.recipe-info-text p {
+	margin: 0;
+}
+
+.recipe-info .threshold {
+	margin-left: 12px;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.power {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 8px;
+}
+
+.power-label {
+	font-size: 0.75rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	padding: 1px 6px;
+	border-radius: 4px;
+	background: var(--accent-soft);
+	color: var(--accent);
+}
+
+.power.none {
+	color: var(--muted);
+}
+
+/* Images inside draggable cards: the card is dragged, not the picture */
+.builder-card img,
+.slot-card img {
+	pointer-events: none;
+	-webkit-user-drag: none;
+	user-select: none;
+}
+
+.builder-inventory {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	gap: 8px;
+	padding: 8px;
+	margin: 0 -8px;
+	border: 2px dashed transparent;
+	border-radius: calc(var(--radius) + 4px);
+	transition: border-color 0.12s, background-color 0.12s;
+}
+
+.builder-inventory.drop-active {
+	border-color: var(--accent);
+	background: var(--accent-soft);
+}
+
+.builder-card,
+.slot-card {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	grid-template-rows: auto auto;
+	column-gap: 8px;
+	align-items: center;
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+	cursor: grab;
+	user-select: none;
+	transition: border-color 0.12s, box-shadow 0.12s, opacity 0.12s;
+}
+
+.builder-card:hover,
+.slot-card:hover {
+	border-color: var(--accent);
+	box-shadow: 0 1px 4px rgb(0 0 0 / 0.1);
+}
+
+.builder-card:focus-visible,
+.slot-card:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+
+.builder-card-image {
+	width: 40px;
+	height: 40px;
+	grid-row: span 3;
+	border-radius: 4px;
+}
+
+.builder-card .card-name,
+.slot-card .card-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.builder-card .level,
+.slot-card .level,
+.builder-card .copies {
+	font-size: 0.78rem;
+	color: var(--muted);
+}
+
+.builder-card .copies {
+	font-variant-numeric: tabular-nums;
+}
+
+.builder-card.used-up {
+	cursor: not-allowed;
+	opacity: 0.45;
+	box-shadow: none;
+	border-color: var(--border);
+	background: var(--surface-2);
+}
+
+.builder-card.used-up .builder-card-image {
+	filter: grayscale(1);
+}
+
+.dragging {
+	opacity: 0.4;
+}
+
+.slots {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	gap: 8px;
+}
+
+.slot {
+	position: relative;
+	display: grid;
+	min-height: 72px;
+	border-radius: var(--radius);
+	transition: background-color 0.12s, outline-color 0.12s;
+	outline: 2px dashed transparent;
+	outline-offset: 2px;
+}
+
+.slot.empty {
+	place-items: center;
+	border: 2px dashed var(--border);
+	background: var(--surface-2);
+}
+
+.slot-number {
+	position: absolute;
+	top: 4px;
+	left: 8px;
+	font-size: 0.72rem;
+	font-weight: 700;
+	color: var(--muted);
+	pointer-events: none;
+	z-index: 1;
+}
+
+.slot:not(.empty) .slot-number {
+	top: -8px;
+	left: 6px;
+	padding: 0 5px;
+	border-radius: 999px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+}
+
+.slot-empty {
+	color: var(--muted);
+	font-size: 0.85rem;
+	pointer-events: none;
+}
+
+.slot .slot-card {
+	padding-top: 12px;
+}
+
+/* While dragging, show every slot as somewhere to drop */
+.is-dragging .slot {
+	outline-color: var(--border);
+}
+
+.slot.drop-active {
+	outline-color: var(--accent);
+}
+
+.slot.empty.drop-active {
+	border-color: var(--accent);
+	background: var(--accent-soft);
+}
+
+.slot.drop-active .slot-card {
+	border-color: var(--accent);
+	background: var(--accent-soft);
+}
+
+.builder-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	margin-top: 16px;
+}
+
+.builder-actions .status {
+	padding-bottom: 0;
+}
+
+/* ---------- Deck stats ---------- */
+
+.stats {
+	margin-top: 8px;
+	border-top: 1px solid var(--border);
+	padding-top: 2px;
+}
+
+.stat-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 8px;
+}
+
+.stat {
+	display: grid;
+	gap: 2px;
+	padding: 10px 12px;
+	border-radius: var(--radius);
+	background: var(--surface-2);
+}
+
+.stat-label {
+	font-size: 0.78rem;
+	font-weight: 600;
+	color: var(--muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.stat-value {
+	font-size: 1.5rem;
+	font-weight: 700;
+	line-height: 1.15;
+	font-variant-numeric: tabular-nums;
+}
+
+.stat-detail {
+	font-size: 0.85rem;
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.compare {
+	margin: 10px 0 0;
+	font-size: 0.9rem;
+}
+
+.star-chances {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: auto auto 1fr auto;
+	align-items: center;
+	gap: 6px 12px;
+	max-width: 560px;
+	font-variant-numeric: tabular-nums;
+}
+
+.star-chances li {
+	display: contents;
+}
+
+.star-chances .muted {
+	font-size: 0.85rem;
+	text-align: right;
+}
+
+.meter {
+	height: 8px;
+	border-radius: 999px;
+	background: var(--surface-2);
+	overflow: hidden;
+}
+
+.meter-fill {
+	display: block;
+	height: 100%;
+	border-radius: inherit;
+	background: var(--star);
+}
+
+.share {
+	font-weight: 600;
+	text-align: right;
+	min-width: 3.5em;
+}
+
+.play-order {
+	counter-reset: play;
+}
+
+.play-order .chip {
+	counter-increment: play;
+}
+
+.play-order .chip::before {
+	content: counter(play);
+	font-size: 0.75rem;
+	font-weight: 700;
+	color: var(--muted);
+}
+
+@media (max-width: 480px) {
+	.builder-inventory,
+	.slots {
+		grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+	}
+
+	.recipe-info-image {
+		width: 56px;
+		height: 56px;
+	}
+}
+
+/* ---------- Deck builder tabs ---------- */
+
+.builder-tabs {
+	margin-top: 14px;
+	border-bottom: 1px solid var(--border);
+}
+
+.builder-tabs .tab {
+	padding: 6px 12px 8px;
+	margin-bottom: -1px;
+}
+
+/* ---------- Comparison with the best deck ---------- */
+
+.comparison {
+	margin-top: 4px;
+}
+
+.difference.ahead .stat-value,
+.ahead {
+	color: var(--good);
+}
+
+.difference.behind .stat-value,
+.behind {
+	color: var(--bad);
+}
+
+.compare-note {
+	margin: 10px 0 0;
+	color: var(--good);
+	font-weight: 600;
+}
+
+.swaps {
+	display: grid;
+	gap: 8px;
+	margin-top: 10px;
+}
+
+.swap {
+	display: grid;
+	grid-template-columns: 6.5em 1fr;
+	align-items: center;
+	gap: 8px;
+}
+
+.swap-label {
+	font-size: 0.78rem;
+	font-weight: 600;
+	color: var(--muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+/* ---------- History ---------- */
+
+.history-empty {
+	margin-top: 14px;
+}
+
+.history-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-top: 10px;
+}
+
+.history-header .hint {
+	margin: 0;
+}
+
+.history-table th.number,
+.history-table td.number {
+	text-align: right;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.history-table tbody td {
+	vertical-align: top;
+}
+
+.history-table tr.current td {
+	background: var(--accent-soft);
+}
+
+.history-table .strong {
+	font-weight: 700;
+}
+
+.history-table .actions {
+	white-space: nowrap;
+	text-align: right;
+}
+
+.history-table .actions .button + .button {
+	margin-left: 4px;
+}
+
+.tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 6px;
+}
+
+.tag {
+	font-size: 0.72rem;
+	font-weight: 600;
+	padding: 1px 7px;
+	border-radius: 999px;
+	background: var(--surface-2);
+	color: var(--accent);
+}
+
+.tag.good {
+	color: var(--good);
+}
+
+.tag.muted {
+	color: var(--muted);
+}
+
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+	.swap {
+		grid-template-columns: 1fr;
+		gap: 4px;
+	}
 }

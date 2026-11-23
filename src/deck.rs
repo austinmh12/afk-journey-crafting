@@ -1,4 +1,5 @@
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
 use crate::card::{Card, CardKind};
 use crate::recipe::Recipe;
@@ -57,12 +58,112 @@ pub struct Deck {
 impl Deck {
 	/// Scores every distinct play order of this deck.
 	pub fn score<R: Rng + ?Sized>(&self, recipe: &Recipe, tables: &CardTables, rng: &mut R) -> ScoreResults {
-		let mut order = self.cards.clone();
-		let mut results = ScoreResults::new(score_order(&order, recipe, tables, rng));
-		while next_permutation(&mut order) {
-			results.push(score_order(&order, recipe, tables, rng));
+		let mut results: Option<ScoreResults> = None;
+		for_each_order(&self.cards, recipe, tables, rng, |_, score| match &mut results {
+			Some(results) => results.push(score),
+			None => results = Some(ScoreResults::new(score)),
+		});
+		results.expect("a deck has at least one play order")
+	}
+
+	/// Scores every distinct play order of this deck and gathers stats about them,
+	/// including the orders that scored lowest and highest.
+	pub fn stats<R: Rng + ?Sized>(&self, recipe: &Recipe, tables: &CardTables, rng: &mut R) -> DeckStats {
+		let mut cards = self.cards.clone();
+		cards.sort();
+		let mut results: Option<ScoreResults> = None;
+		let mut minimum = Played::default();
+		let mut maximum = Played::default();
+		let mut star_orders = vec![0; recipe.stars.len()];
+		for_each_order(&cards, recipe, tables, rng, |order, score| {
+			match &mut results {
+				Some(results) => {
+					// Strict comparisons keep the first order seen on ties, like ScoreResults
+					if score.total() < results.minimum.total() {
+						minimum = Played::new(order, score);
+					}
+					if score.total() > results.maximum.total() {
+						maximum = Played::new(order, score);
+					}
+					results.push(score);
+				}
+				None => {
+					results = Some(ScoreResults::new(score));
+					minimum = Played::new(order, score);
+					maximum = minimum.clone();
+				}
+			}
+			for count in &mut star_orders[..recipe.stars(score.total())] {
+				*count += 1;
+			}
+		});
+		let results = results.expect("a deck has at least one play order");
+		DeckStats {
+			orders: results.count as u64,
+			average: results.average(),
+			minimum,
+			maximum,
+			star_orders,
+			cards,
 		}
-		results
+	}
+}
+
+/// One play order of a deck and the score it got.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Played {
+	pub order: Vec<Card>,
+	pub left: i64,
+	pub right: i64,
+}
+
+impl Played {
+	fn new(order: &[Card], score: Score) -> Self {
+		Self {
+			order: order.to_vec(),
+			left: score.left,
+			right: score.right,
+		}
+	}
+
+	pub fn total(&self) -> i64 {
+		self.left * self.right
+	}
+}
+
+/// Stats over every distinct play order of one deck. See [`Deck::stats`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeckStats {
+	/// The deck's cards, sorted.
+	pub cards: Vec<Card>,
+	/// How many distinct play orders were scored.
+	pub orders: u64,
+	/// Average score over every play order.
+	pub average: i64,
+	/// The lowest-scoring play order (the first one, on ties).
+	pub minimum: Played,
+	/// The highest-scoring play order (the first one, on ties).
+	pub maximum: Played,
+	/// How many play orders earned at least each star, lowest star first.
+	pub star_orders: Vec<u64>,
+}
+
+/// Scores every distinct play order of `cards`, which must be sorted to start
+/// from the first order, and calls `f` with each order and its score.
+fn for_each_order<R: Rng + ?Sized>(
+	cards: &[Card],
+	recipe: &Recipe,
+	tables: &CardTables,
+	rng: &mut R,
+	mut f: impl FnMut(&[Card], Score),
+) {
+	let mut order = cards.to_vec();
+	loop {
+		let score = score_order(&order, recipe, tables, rng);
+		f(&order, score);
+		if !next_permutation(&mut order) {
+			break;
+		}
 	}
 }
 
@@ -415,6 +516,34 @@ mod tests {
 		// Multi-Forge lvl 2 queues 3 hits; Forge Expert lvl 5 is value 5, bonus 5
 		assert_eq!(points(&[(MultiForge, 2), (ForgeExpert, 5), (Soulbind, 1)]), 130);
 		assert_eq!(points(&[(ForgeExpert, 5), (MultiForge, 2), (Soulbind, 1)]), 25);
+	}
+
+	#[test]
+	fn deck_stats_cover_every_play_order() {
+		use CardKind::*;
+		// Reforge lvl 1 adds 5 to both colours; Banquet flips the card before it again.
+		// Orders, in sorted order: B R R -> 11x11, R B R -> 16x16, R R B -> 16x16
+		let recipe = Recipe {
+			name: String::new(),
+			location: Location::Forge,
+			cards: 3,
+			stars: vec![100, 200, 300],
+		};
+		// Unsorted on purpose: stats sorts the deck to cover every order
+		let deck = Deck { cards: vec![card(Reforge), card(Banquet), card(Reforge)] };
+		let stats = deck.stats(&recipe, &tables(), &mut rand::rng());
+		assert_eq!(stats.cards, vec![card(Banquet), card(Reforge), card(Reforge)]);
+		assert_eq!(stats.orders, 3);
+		assert_eq!(stats.average, (121 + 256 + 256) / 3);
+		assert_eq!(stats.minimum.order, vec![card(Banquet), card(Reforge), card(Reforge)]);
+		assert_eq!(stats.minimum.total(), 121);
+		// The first of the two 256s
+		assert_eq!(stats.maximum.order, vec![card(Reforge), card(Banquet), card(Reforge)]);
+		assert_eq!(stats.maximum.total(), 256);
+		assert_eq!(stats.star_orders, vec![3, 2, 0]);
+		// Matches the calculator's scoring of the same deck
+		let sorted = Deck { cards: stats.cards.clone() };
+		assert_eq!(sorted.score(&recipe, &tables(), &mut rand::rng()).average(), stats.average);
 	}
 
 	#[test]

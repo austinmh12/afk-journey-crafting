@@ -84,6 +84,37 @@ impl Recipe {
 		self.stars.partition_point(|&threshold| threshold <= score)
 	}
 
+	/// What this recipe's power does, worded as in the game, or `None` if it has
+	/// no power the calculator knows of.
+	pub fn power(&self) -> Option<&'static str> {
+		Some(match self.name.as_str() {
+			powers::SALTED_RAISIN => "Cutting always yields max points",
+			powers::ROASTED_CORN => "Cut always affects the lowest color",
+			powers::DRIED_MUSHROOM => {
+				"+3 to all colors if Heat Control triggers at least 7 times at the end of production"
+			}
+			powers::ODD_SWEET => "+5 to all colors if the final point gap is less than 5",
+			powers::HEALTHY_CANDIED_SKEWER => "Lowers the highest color to match the lowest color at the end of production",
+			powers::COPPER_STEWPOT | powers::FIREFANG_SWORD => "30% chance for Forge Expert to trigger an extra time",
+			powers::CARVED_BOX => "The first Forge card affects all colors",
+			powers::WARM_STONE_ARMOR => {
+				"+3 to all colors if artisan card effects triggered at least 6 times at the end of production"
+			}
+			powers::FIREPROOF_HELM => "The first 3 Forge cards affect all colors",
+			powers::PROTECTIVE_PICK_HAMMER => "Cards enhanced by at least 2 other cards trigger an extra time",
+			powers::CALMING_WARMDUST | powers::SOOTHING_TONIC => "+3 to the highest color for each card flip",
+			powers::WARMDUST | powers::ILLUSION_POTION => "+1 to the lowest color for each card flip",
+			powers::WARMING_INCENSE => "Grind cards trigger 1 extra time",
+			powers::CALMWIND_INCENSE => "Ingredients cards trigger 1 extra time",
+			powers::FIREWARD_RING => "+15 to a random color at the start of production",
+			powers::EARTH_ANTIDOTE => "Any effects on the highest color are doubled",
+			powers::FROST_ANTIDOTE => {
+				"Doubles the lowest color at the end of production if the highest color is more than 3x the lowest"
+			}
+			_ => return None,
+		})
+	}
+
 	/// The starting score for this recipe, with any start-of-production power applied.
 	pub fn start_score<R: Rng + ?Sized>(&self, rng: &mut R) -> Score {
 		let mut score = Score::default();
@@ -151,5 +182,16 @@ mod tests {
 		assert_eq!(recipe.stars(29), 2);
 		assert_eq!(recipe.stars(30), 3);
 		assert_eq!(recipe.stars(1000), 3);
+	}
+
+	#[test]
+	fn powers_are_described() {
+		let recipes: Vec<Recipe> = ron::from_str(include_str!("../data/recipes.ron")).unwrap();
+		let find = |name: &str| recipes.iter().find(|recipe| recipe.name == name).unwrap();
+		assert_eq!(find(powers::CARVED_BOX).power(), Some("The first Forge card affects all colors"));
+		assert_eq!(find("Round Bread").power(), None);
+		// Every power constant names a recipe in the data, so its description can show
+		let described = recipes.iter().filter(|recipe| recipe.power().is_some()).count();
+		assert_eq!(described, 20);
 	}
 }
