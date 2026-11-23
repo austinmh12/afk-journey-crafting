@@ -24,7 +24,7 @@ A big thanks to [@MatsuTaku](https://github.com/MatsuTaku) as they had a lot of 
 
 The web front end is built with [Yew](https://yew.rs) and [Trunk](https://trunkrs.dev). It runs entirely in your browser:
 
-- A sidebar on the left with the three pages: **Deck builder**, which the app opens on, **Best decks** and **Cards**. The current page is highlighted, and its name heads the page. On narrow screens the pages become a bar across the top.
+- A sidebar on the left with the four pages: **Deck builder**, which the app opens on, **Best decks**, **Cards** and **Facilities**. The current page is highlighted, and its name heads the page. On narrow screens the pages become a bar across the top.
 - A tab for each location (Kitchen, Forge, Alchemy) at the top of the page.
 - A **Facility level** selector. Cards are capped to what that level allows: capped values are flagged (for example "Level → 4"), cards that aren't unlocked yet are greyed out, and **Use level maximums** sets every card to the highest it can be. Recipes the level hasn't unlocked are left out of the recipe selector and **All**.
 - The location's cards, each with a **Level** and **Limit** box. A limit of 0 leaves the card out. Edits are saved in your browser, and **Reset all locations to defaults** goes back to `data/inventory.ron`.
@@ -43,6 +43,7 @@ The web front end is built with [Yew](https://yew.rs) and [Trunk](https://trunkr
   - What it does: how it scores, or how it changes other cards.
   - The facility level it unlocks at.
   - A table with a row for each facility level where the card unlocks, levels up or allows more copies per deck: the card level, the copies, and the card's values at that level (points, charges, multipliers, debuffs and so on). What changed is in bold. With a facility level set, the rows it hasn't reached are faded and the row for your level is highlighted. Values marked † aren't in `data/cards.ron` yet, so they show the card's default.
+- The **Facilities** page, with a row for each level of the location's facility: the recipes it unlocks, and the cards it unlocks (marked **New**), levels up or allows more copies of. With a facility level set, your level's row is highlighted.
 
 Decks are scored in [web workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API), one per CPU core, so the page stays responsive during long runs. Expect it to be slower than the command line, as WebAssembly is slower than native code.
 
@@ -236,7 +237,7 @@ Edit this file when a card's in-game numbers are confirmed or change.
 | [src/lib.rs](src/lib.rs) | The scoring library shared by the command line and the web app. |
 | [src/inventory.rs](src/inventory.rs) | The facility levels and owned cards in `inventory.ron`. |
 | [src/facility.rs](src/facility.rs) | The facility level caps in `facilities.ron`. |
-| [src/info.rs](src/info.rs) | The Cards page's data: card descriptions, unlock and upgrade levels, and values by level. |
+| [src/info.rs](src/info.rs) | The Cards and Facilities pages' data: card descriptions, unlock and upgrade levels, values by level, and what unlocks at each facility level. |
 | [src/web/app.rs](src/web/app.rs) | The Yew page: location tabs, card inputs, recipe selector, results table and deck builder. |
 | [src/builder.rs](src/builder.rs) | The deck builder's slots, and the rules for adding, moving and removing cards. |
 | [src/web/worker.rs](src/web/worker.rs), [src/bin/worker.rs](src/bin/worker.rs) | The web worker that scores decks, for both the calculator and the deck builder. |

@@ -52,17 +52,20 @@ pub enum View {
 	Calculator,
 	/// What each card does, when it unlocks and its values at each level.
 	Cards,
+	/// What unlocks at each facility level.
+	Facilities,
 }
 
 impl View {
 	/// In the order the sidebar lists them.
-	const ALL: [Self; 3] = [Self::Builder, Self::Calculator, Self::Cards];
+	const ALL: [Self; 4] = [Self::Builder, Self::Calculator, Self::Cards, Self::Facilities];
 
 	fn name(self) -> &'static str {
 		match self {
 			Self::Builder => "Deck builder",
 			Self::Calculator => "Best decks",
 			Self::Cards => "Cards",
+			Self::Facilities => "Facilities",
 		}
 	}
 
@@ -72,6 +75,7 @@ impl View {
 			Self::Builder => "Build and score your own deck",
 			Self::Calculator => "Find the best deck for each recipe",
 			Self::Cards => "What each card does at each level",
+			Self::Facilities => "What unlocks at each facility level",
 		}
 	}
 
@@ -98,6 +102,13 @@ impl View {
 				<>
 					<path d="M2 5h6a4 4 0 0 1 4 4v11a3 3 0 0 0-3-3H2z" />
 					<path d="M22 5h-6a4 4 0 0 0-4 4v11a3 3 0 0 1 3-3h7z" />
+				</>
+			},
+			// A building with a door
+			Self::Facilities => html! {
+				<>
+					<path d="M3 21h18M5 21V10l7-6 7 6v11" />
+					<path d="M10 21v-5h4v5" />
 				</>
 			},
 		};
@@ -583,8 +594,10 @@ impl Component for App {
 						{ self.view_inventory(ctx) }
 						{ self.view_controls(ctx) }
 						{ self.view_results() }
-					} else {
+					} else if self.view == View::Cards {
 						{ self.view_card_guide() }
+					} else {
+						{ self.view_facility_guide() }
 					}
 				</main>
 				</div>
@@ -1429,7 +1442,6 @@ impl App {
 				{ondragleave}
 				{ondrop}
 			>
-				<span class="slot-number">{ slot + 1 }</span>
 				if let Some(card) = card {
 					<div
 						class="slot-card"
@@ -1903,6 +1915,103 @@ impl App {
 				</div>
 			</section>
 		}
+	}
+}
+
+impl App {
+	/// The facility guide: what unlocks at each level of the current location.
+	fn view_facility_guide(&self) -> Html {
+		let location = self.location;
+		let yours = self.facility().level;
+		let levels = info::facility_levels(&self.facilities, location);
+		let level_note = match yours {
+			Some(level) => format!(" Your {} is level {level}, highlighted below.", location.name()),
+			None => " Set your facility level on the other pages to highlight it here.".into(),
+		};
+		html! {
+			<section class="panel" aria-labelledby="facility-guide-heading">
+				<div class="heading-with-image">
+					{ image(images::facility(location), "facility-image") }
+					<h2 id="facility-guide-heading">{ format!("{} levels", location.name()) }</h2>
+				</div>
+				<p class="hint">
+					{ "The recipes and cards each facility level unlocks, and the cards that level up or allow more copies per deck." }
+					{ level_note }
+				</p>
+				<div class="table-wrap">
+					<table class="facility-levels">
+						<thead>
+							<tr>
+								<th scope="col">{ "Level" }</th>
+								<th scope="col">{ "Recipes" }</th>
+								<th scope="col">{ "Cards" }</th>
+							</tr>
+						</thead>
+						<tbody>
+							{ for levels.iter().map(|level| {
+								let current = yours == Some(level.level);
+								html! {
+									<tr class={classes!(current.then_some("current"))} aria-current={current.then_some("true")}>
+										<th scope="row">{ level.level }</th>
+										<td>
+											if level.recipes.is_empty() {
+												<span class="muted">{ "—" }</span>
+											} else {
+												<ul class="deck">
+													{ for level.recipes.iter().map(|name| self.view_recipe_chip(name)) }
+												</ul>
+											}
+										</td>
+										<td>
+											if level.cards.is_empty() {
+												<span class="muted">{ "—" }</span>
+											} else {
+												<ul class="deck">
+													{ for level.cards.iter().map(view_card_change) }
+												</ul>
+											}
+										</td>
+									</tr>
+								}
+							}) }
+						</tbody>
+					</table>
+				</div>
+			</section>
+		}
+	}
+
+	fn view_recipe_chip(&self, name: &str) -> Html {
+		let recipe = self.recipes.iter().find(|recipe| recipe.name == name);
+		html! {
+			<li class="chip">
+				if let Some(recipe) = recipe {
+					{ image(images::recipe(recipe), "chip-image") }
+				}
+				<span>{ name.to_string() }</span>
+			</li>
+		}
+	}
+}
+
+/// A card that unlocked, levelled up or gained copies at a facility level.
+fn view_card_change(change: &info::CardChange) -> Html {
+	let mut details = Vec::new();
+	if let Some(level) = change.card_level {
+		details.push(format!("Lv {level}"));
+	}
+	if let Some(limit) = change.limit {
+		details.push(if limit == 1 { "1 copy".to_string() } else { format!("{limit} copies") });
+	}
+	html! {
+		<li class={classes!("chip", "card-change", change.new.then_some("new"))}>
+			{ image(images::card(change.kind), "chip-image") }
+			<span>{ change.kind.name() }</span>
+			if change.new {
+				<span class="badge">{ "New" }</span>
+			}
+			<span class="level">{ details.join(" · ") }</span>
+		</li>
 	}
 }
 

@@ -1,5 +1,6 @@
 //! What each card does, when it unlocks and upgrades, and its values at each
-//! level, for the web page's card guide.
+//! level, for the web page's card guide; and what unlocks at each facility
+//! level, for its facility guide.
 
 use crate::card::CardKind;
 use crate::facility::{Facilities, MAX_LEVEL};
@@ -113,6 +114,68 @@ pub fn guide_order(facilities: &Facilities, location: Location) -> Vec<CardKind>
 		(unlock, !scores(kind))
 	});
 	kinds
+}
+
+/// What changed for one card at a facility level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardChange {
+	pub kind: CardKind,
+	/// Whether the card unlocked at this level.
+	pub new: bool,
+	/// The card's new highest level, if it changed.
+	pub card_level: Option<u8>,
+	/// The card's new copies per deck, if they changed.
+	pub limit: Option<usize>,
+}
+
+/// What unlocks at one facility level.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LevelUnlocks {
+	pub level: u8,
+	/// Recipe names, as listed in the facilities data.
+	pub recipes: Vec<String>,
+	/// New cards first, then upgrades, each in card guide order.
+	pub cards: Vec<CardChange>,
+}
+
+/// What unlocks at each facility level at `location`, from level 1 to the highest.
+pub fn facility_levels(facilities: &Facilities, location: Location) -> Vec<LevelUnlocks> {
+	let mut levels: Vec<LevelUnlocks> = (1..=MAX_LEVEL)
+		.map(|level| LevelUnlocks {
+			level,
+			recipes: facilities
+				.0
+				.get(&location)
+				.and_then(|table| table.recipe_unlocks.get(&level))
+				.cloned()
+				.unwrap_or_default(),
+			cards: Vec::new(),
+		})
+		.collect();
+	for kind in guide_order(facilities, location) {
+		// The values the card last had while unlocked
+		let mut unlocked: Option<Step> = None;
+		for step in progression(facilities, kind) {
+			if step.card_level == 0 || step.limit == 0 {
+				continue;
+			}
+			let change = CardChange {
+				kind,
+				new: unlocked.is_none(),
+				card_level: Some(step.card_level).filter(|&level| unlocked.is_none_or(|prev| prev.card_level != level)),
+				limit: Some(step.limit).filter(|&limit| unlocked.is_none_or(|prev| prev.limit != limit)),
+			};
+			unlocked = Some(step);
+			if change.card_level.is_some() || change.limit.is_some() {
+				levels[usize::from(step.facility_level) - 1].cards.push(change);
+			}
+		}
+	}
+	for level in &mut levels {
+		// Stable, so each group keeps card guide order
+		level.cards.sort_by_key(|change| !change.new);
+	}
+	levels
 }
 
 /// A facility level where a card's level cap or copies per deck changes.
@@ -419,6 +482,32 @@ mod tests {
 		)]));
 		let order = guide_order(&facilities, Location::Forge);
 		assert_eq!(&order[..2], [Reforge, HeatUp]);
+	}
+
+	#[test]
+	fn facility_level_unlocks() {
+		use CardKind::*;
+		let levels = facility_levels(&facilities(), Location::Kitchen);
+		assert_eq!(levels.len(), usize::from(MAX_LEVEL));
+		let first = &levels[0];
+		assert_eq!(first.recipes, ["Round Bread"]);
+		assert_eq!(
+			first.cards,
+			[
+				CardChange { kind: Cut, new: true, card_level: Some(1), limit: Some(2) },
+				CardChange { kind: Season, new: true, card_level: Some(1), limit: Some(1) },
+			]
+		);
+		// Heat Control unlocks at 2, while Cut levels up and gains a copy
+		assert_eq!(
+			levels[1].cards,
+			[
+				CardChange { kind: HeatControl, new: true, card_level: Some(1), limit: Some(1) },
+				CardChange { kind: Cut, new: false, card_level: Some(2), limit: Some(3) },
+			]
+		);
+		// Heat Control only gains a copy at 3
+		assert!(levels[2].cards.contains(&CardChange { kind: HeatControl, new: false, card_level: None, limit: Some(2) }));
 	}
 
 	#[test]

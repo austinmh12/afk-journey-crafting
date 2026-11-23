@@ -627,34 +627,10 @@ input:disabled {
 	background: var(--surface-2);
 }
 
-.slot-number {
-	position: absolute;
-	top: 4px;
-	left: 8px;
-	font-size: 0.72rem;
-	font-weight: 700;
-	color: var(--muted);
-	pointer-events: none;
-	z-index: 1;
-}
-
-.slot:not(.empty) .slot-number {
-	top: -8px;
-	left: 6px;
-	padding: 0 5px;
-	border-radius: 999px;
-	background: var(--surface);
-	border: 1px solid var(--border);
-}
-
 .slot-empty {
 	color: var(--muted);
 	font-size: 0.85rem;
 	pointer-events: none;
-}
-
-.slot .slot-card {
-	padding-top: 12px;
 }
 
 /* While dragging, show every slot as somewhere to drop */
@@ -1431,4 +1407,60 @@ main.wide {
 	margin-left: 2px;
 	color: var(--star);
 	cursor: help;
+}
+
+/* Facility guide (Facilities page) */
+.facility-levels {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.facility-levels th,
+.facility-levels td {
+	text-align: left;
+	vertical-align: top;
+	padding: 10px 8px;
+	border-top: 1px solid var(--border);
+}
+
+.facility-levels thead th {
+	border-top: 0;
+	font-size: 0.8rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--muted);
+}
+
+.facility-levels tbody th {
+	width: 4em;
+	font-variant-numeric: tabular-nums;
+}
+
+.facility-levels td:nth-child(2) {
+	width: 35%;
+	min-width: 160px;
+}
+
+.facility-levels tr.current {
+	background: var(--accent-soft);
+}
+
+.facility-levels tr.current th {
+	color: var(--accent);
+}
+
+.card-change {
+	background: var(--surface-2);
+}
+
+.card-change.new {
+	background: var(--accent-soft);
+}
+
+.badge {
+	font-size: 0.7rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--accent);
 }
