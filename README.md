@@ -15,6 +15,8 @@ There are two ways to use it: a [web page](#web-front-end) where you edit your c
 
 A big thanks to [@MatsuTaku](https://github.com/MatsuTaku) as they had a lot of the data that made it possible to score earlier levels of cards. They made a tool here: [AFK Journey Techcard Optimizer](https://github.com/MatsuTaku/afkjourney-techcard-optimizer). Though slightly outdated, the information is still good for early to mid-level homesteads.
 
+Also a big thanks to the [Yaphalla Community](https://www.google.com/url?q=http://discord.gg/yaphalla&sa=D&source=editors&ust=1795464634893809&usg=AOvVaw1OU8FqSi7CmPesYzthUfyO) for their work on compiling information in the [AFK Journey 1.6.1 Homestead Spreadsheet](https://docs.google.com/spreadsheets/d/e/2PACX-1vTkwoy0_IKEWZZWoCebVXn3zNEVOGbAvTdtn4d1tznfqT5n9SdnKM0oIIo6fCDFV2SharTIEnOx91v3/pubhtml#gid=1017644258).
+
 ## Requirements
 
 - Rust 1.85 or newer (the crate uses the 2024 edition). Install it from <https://rustup.rs>.
@@ -256,4 +258,3 @@ Run the tests with `cargo test`.
   - Recipes will also be hopefully higher-res.
 - Verify and validate all cards based on in game scoring, some of the card's descriptions are a bit ambiguous to how they actually score, same for recipe powers.
 - Hovering over cards should display their abilities
-- Add a recipe section, like the Cards page, that shows information about each recipe
