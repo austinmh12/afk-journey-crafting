@@ -5,6 +5,7 @@ pub mod builder;
 pub mod card;
 pub mod deck;
 pub mod facility;
+pub mod format;
 pub mod images;
 pub mod info;
 pub mod inventory;

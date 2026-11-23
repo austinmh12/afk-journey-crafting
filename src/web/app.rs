@@ -13,6 +13,7 @@ use crate::builder::{self, Builder, DragSource, DropTarget, Stats};
 use crate::card::{Card, CardKind};
 use crate::deck::{self, DeckStats};
 use crate::facility::{self, Facilities};
+use crate::format::{group_digits, star_shares};
 use crate::images;
 use crate::info;
 use crate::inventory::{Facility, Inventory, Owned, available_cards};
@@ -1328,14 +1329,7 @@ impl App {
 				format!("Add {left} more {} to score the deck.", if left == 1 { "card" } else { "cards" })
 			}
 			Some((_, _, crafts)) if scoring => format!("Scoring {} crafts…", group_digits(crafts)),
-			Some((orders, rolls, crafts)) => format!(
-				"{} play {} × {} {} = {} crafts",
-				group_digits(orders),
-				if orders == 1 { "order" } else { "orders" },
-				group_digits(rolls),
-				if rolls == 1 { "roll" } else { "rolls" },
-				group_digits(crafts),
-			),
+			Some((orders, rolls, _)) => crate::format::sampling(orders, rolls),
 		};
 
 		html! {
@@ -2172,25 +2166,6 @@ fn load_history() -> BTreeMap<String, Vec<DeckStats>> {
 		.unwrap_or_default()
 }
 
-/// Each star count's share of a deck's crafts, from 0 stars up: the share as a
-/// percentage, for drawing, and as text rounded so the shares add up to 100%.
-fn star_shares(stats: &DeckStats) -> Vec<(f64, String)> {
-	let counts = stats.star_counts();
-	let total = stats.crafts().max(1) as f64;
-	counts
-		.iter()
-		.zip(builder::tenths_of_percent(&counts))
-		.map(|(&count, tenths)| {
-			let shown = if count > 0 && tenths == 0 {
-				"<0.1%".to_string()
-			} else {
-				format!("{}.{}%", tenths / 10, tenths % 10)
-			};
-			(count as f64 / total * 100.0, shown)
-		})
-		.collect()
-}
-
 /// A deck's chance of each star count as one bar, from 0 stars at the left to
 /// every star at the right, in one hue that darkens with each star, with a legend
 /// that gives every share as text.
@@ -2245,18 +2220,6 @@ fn star_range(recipe: &Recipe, stars: usize) -> String {
 }
 
 /// `n` with commas between groups of three digits, e.g. 1,000,000.
-fn group_digits(n: u64) -> String {
-	let digits = n.to_string();
-	let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
-	for (i, digit) in digits.chars().enumerate() {
-		if i > 0 && (digits.len() - i).is_multiple_of(3) {
-			grouped.push(',');
-		}
-		grouped.push(digit);
-	}
-	grouped
-}
-
 fn save_history(history: &BTreeMap<String, Vec<DeckStats>>) {
 	if let Ok(text) = ron::to_string(history) {
 		// Not being able to save only loses the history on reload

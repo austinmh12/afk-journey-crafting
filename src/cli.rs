@@ -10,10 +10,10 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use serde::de::DeserializeOwned;
 
-use afkjourney_crafting::card::Card;
-use afkjourney_crafting::deck::{Deck, ScoreResults, beats, generate_decks};
-use afkjourney_crafting::facility::Facilities;
-use afkjourney_crafting::inventory::{Inventory, available_cards};
+use afkjourney_crafting::deck::{DeckStats, beats, generate_decks};
+use afkjourney_crafting::facility::{Facilities, MAX_LEVEL};
+use afkjourney_crafting::format::{grouped_cards, sampling, star_shares};
+use afkjourney_crafting::inventory::{available_cards, maxed_inventory};
 use afkjourney_crafting::recipe::{Location, Recipe};
 use afkjourney_crafting::tables::CardTables;
 
@@ -29,13 +29,46 @@ struct Args {
 	#[arg(short, long, ignore_case = true)]
 	location: Option<Location>,
 
-	/// Inventory file to use [default: <DATA_DIR>/inventory.ron]
-	#[arg(short, long)]
-	inventory: Option<PathBuf>,
+	/// Kitchen facility level. Every Kitchen card is set to the most this level allows.
+	#[arg(short, long, value_name = "LEVEL", default_value_t = 1, value_parser = facility_level)]
+	kitchen: u8,
 
-	/// Directory holding cards.ron, recipes.ron, facilities.ron and the default inventory.ron.
+	/// Forge facility level. Every Forge card is set to the most this level allows.
+	#[arg(short, long, value_name = "LEVEL", default_value_t = 1, value_parser = facility_level)]
+	forge: u8,
+
+	/// Alchemy facility level. Every Alchemy card is set to the most this level allows.
+	#[arg(short, long, value_name = "LEVEL", default_value_t = 1, value_parser = facility_level)]
+	alchemy: u8,
+
+	/// Directory holding cards.ron, recipes.ron and facilities.ron.
 	#[arg(short, long, default_value = "data")]
 	data_dir: PathBuf,
+
+	/// About how many crafts to score each best deck with, for its average, lowest
+	/// and highest scores and chance of each star. Every play order is scored the
+	/// same number of times, and at least once.
+	#[arg(short, long, default_value_t = 50_000, value_parser = clap::value_parser!(u64).range(1..))]
+	samples: u64,
+}
+
+/// Parses a facility level, from 1 to the highest in the game.
+fn facility_level(text: &str) -> Result<u8, String> {
+	match text.parse::<u8>() {
+		Ok(level) if (1..=MAX_LEVEL).contains(&level) => Ok(level),
+		_ => Err(format!("must be a facility level from 1 to {MAX_LEVEL}")),
+	}
+}
+
+impl Args {
+	/// The facility level for `location`.
+	fn level(&self, location: Location) -> u8 {
+		match location {
+			Location::Kitchen => self.kitchen,
+			Location::Forge => self.forge,
+			Location::Alchemy => self.alchemy,
+		}
+	}
 }
 
 fn load<T: DeserializeOwned>(path: &Path) -> Result<T, Box<dyn Error>> {
@@ -44,7 +77,6 @@ fn load<T: DeserializeOwned>(path: &Path) -> Result<T, Box<dyn Error>> {
 	Ok(value)
 }
 
-// TODO: Add modes for selecting highest minimum for highest chance at stars, etc.
 pub fn main() -> ExitCode {
 	match run(Args::parse()) {
 		Ok(()) => ExitCode::SUCCESS,
@@ -57,11 +89,11 @@ pub fn main() -> ExitCode {
 
 fn run(args: Args) -> Result<(), Box<dyn Error>> {
 	let tables: CardTables = load(&args.data_dir.join("cards.ron"))?;
-	let inventory_path = args.inventory.unwrap_or_else(|| args.data_dir.join("inventory.ron"));
-	let inventory: Inventory = load(&inventory_path)?;
 	let recipes_path = args.data_dir.join("recipes.ron");
 	let recipes: Vec<Recipe> = load(&recipes_path)?;
 	let facilities: Facilities = load(&args.data_dir.join("facilities.ron"))?;
+	// Every card maxed for its facility's level
+	let inventory = maxed_inventory(&facilities, |location| args.level(location));
 
 	let selected: Vec<&Recipe> = if let Some(name) = &args.recipe {
 		if args.location.is_some() {
@@ -99,10 +131,10 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
 	locations.sort();
 	locations.dedup();
 	for location in locations {
-		report_caps(&inventory, &facilities, location);
+		eprintln!("{} level {}", location.name(), args.level(location));
 	}
 
-	let mut results: Vec<(&Recipe, Deck, ScoreResults)> = Vec::new();
+	let mut results = Vec::new();
 
 	for recipe in selected {
 		let decks = generate_decks(&available_cards(&inventory, &facilities, recipe.location), recipe.cards);
@@ -125,44 +157,58 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
 			.reduce_with(|a, b| if beats(b.2.average(), b.0, a.2.average(), a.0) { b } else { a });
 		progress.finish();
 
-		if let Some((_, deck, scored)) = best {
-			results.push((recipe, deck, scored));
+		match best {
+			Some((_, deck, _)) => results.push((recipe, Some(deck))),
+			None => results.push((recipe, None)),
 		}
 	}
 
-	for (recipe, deck, result) in results {
-		let stars = |value: i64| "*".repeat(recipe.stars(value));
-		let average = result.average();
-		println!("{}", recipe.name);
-		println!("    Min: {} {}", result.minimum, stars(result.minimum.total()));
-		println!("    Avg: {} {}", average, stars(average));
-		println!("    Max: {} {}", result.maximum, stars(result.maximum.total()));
-		println!("    Cards for Average:");
-		let cards: Vec<String> = deck.cards.iter().map(Card::to_string).collect();
-		println!("      {}", cards.join(", "));
+	// Score each best deck again with the samples setting, like the web page,
+	// for a steadier average and its chance of each star
+	let progress = ProgressBar::new(results.iter().filter(|(_, deck)| deck.is_some()).count() as u64)
+		.with_style(ProgressStyle::with_template("{msg}: {wide_bar} {pos}/{len} [{elapsed_precise}<{eta_precise}]")?)
+		.with_message("Sampling best decks");
+	let stats: Vec<(&Recipe, Option<DeckStats>)> = results
+		.into_par_iter()
+		.map_init(rand::rng, |rng, (recipe, deck)| {
+			let stats = deck.map(|deck| {
+				let stats = deck.stats(recipe, &tables, args.samples, rng);
+				progress.inc(1);
+				stats
+			});
+			(recipe, stats)
+		})
+		.collect();
+	progress.finish();
+
+	for (recipe, stats) in stats {
+		println!();
+		print_stats(recipe, stats.as_ref());
 	}
 	Ok(())
 }
 
-/// Notes the cards the facility's level lowers from what the inventory says.
-fn report_caps(inventory: &Inventory, facilities: &Facilities, location: Location) {
-	let Some(facility) = inventory.get(&location) else { return };
-	let Some(level) = facility.level else { return };
-	for (&kind, &owned) in &facility.cards {
-		let cap = facility.cap(facilities, location, kind);
-		let capped = cap.apply(owned);
-		if cap.locked() && owned.limit > 0 {
-			eprintln!("{} level {level}: {} isn't unlocked yet, so it isn't used", location.name(), kind.name());
-		} else if capped != owned {
-			eprintln!(
-				"{} level {level}: {} capped to level {} with {} copies (inventory has level {}, {} copies)",
-				location.name(),
-				kind.name(),
-				capped.level,
-				capped.limit,
-				owned.level,
-				owned.limit
-			);
-		}
-	}
+/// Prints a recipe's best deck and its stats, as the web page's Best decks table shows them.
+fn print_stats(recipe: &Recipe, stats: Option<&DeckStats>) {
+	println!("{}", recipe.name);
+	let Some(stats) = stats else {
+		println!("    Not enough cards: needs {}", recipe.cards);
+		return;
+	};
+	let stars = |score: i64| {
+		let stars = recipe.stars(score);
+		if stars == 0 { String::new() } else { format!(" {}", "*".repeat(stars)) }
+	};
+	let (low, high) = (&stats.minimum, &stats.maximum);
+	println!("    Avg:    {}{}", stats.average, stars(stats.average));
+	println!("    Low:    {}x{} ({}){}", low.left, low.right, low.total(), stars(low.total()));
+	println!("    High:   {}x{} ({}){}", high.left, high.right, high.total(), stars(high.total()));
+	let shares: Vec<String> = star_shares(stats)
+		.into_iter()
+		.enumerate()
+		.map(|(count, (_, shown))| format!("{count}* {shown}"))
+		.collect();
+	println!("    Stars:  {}", shares.join(" | "));
+	println!("    Scored: {}", sampling(stats.orders, stats.rolls));
+	println!("    Cards:  {}", grouped_cards(&stats.cards));
 }

@@ -4,9 +4,10 @@ Finds the best deck of cards to craft each AFK Journey homestead recipe with, ba
 
 For each recipe, the calculator:
 
-1. Builds every distinct deck of the recipe's card count from your inventory for that location (Kitchen, Forge or Alchemy), using each card no more times than your limit allows.
+1. Builds every distinct deck of the recipe's card count from your cards at that location (Kitchen, Forge or Alchemy), using each card no more times than its limit allows.
 2. Scores every distinct play order of each deck, applying card effects (Charge, Multi-Forge, Heat Up, Reversal, Banquet and so on) and the recipe's power, if it has one.
-3. Reports the deck with the highest **average** score across its play orders, along with that deck's minimum and maximum, and the stars each one earns. This is because I prioritize regularly getting stars rather than going for the highest value possible.
+3. Picks the deck with the highest **average** score across its play orders. This is because I prioritize regularly getting stars rather than going for the highest value possible.
+4. Scores that deck again with about `--samples` crafts (50,000 by default), and reports its average, lowest and highest scores, and its chance of earning each number of stars.
 
 Decks are scored in parallel across all CPU cores.
 
@@ -27,7 +28,7 @@ The web front end is built with [Yew](https://yew.rs) and [Trunk](https://trunkr
 - A sidebar on the left with the four pages: **Deck builder**, which the app opens on, **Best decks**, **Cards** and **Facilities**. The current page is highlighted, and its name heads the page. On narrow screens the pages become a bar across the top.
 - A tab for each location (Kitchen, Forge, Alchemy) at the top of the page.
 - A **Facility level** selector. Cards are capped to what that level allows: capped values are flagged (for example "Level → 4"), cards that aren't unlocked yet are greyed out, and **Use level maximums** sets every card to the highest it can be. Recipes the level hasn't unlocked are left out of the recipe selector and **All**.
-- The location's cards, each with a **Level** and **Limit** box. A limit of 0 leaves the card out. Edits are saved in your browser, and **Reset all locations to defaults** goes back to `data/inventory.ron`.
+- The location's cards, each with a **Level** and **Limit** box. A limit of 0 leaves the card out. Edits are saved in your browser, and **Reset all locations to defaults** goes back to the starting cards: every facility at level 1, with each card at the most that level allows.
 - A **Recipe** selector. **All** (the default) runs every recipe at the location; or pick a single recipe. **Calculate** runs it.
 - A **Samples** setting, shared with the deck builder (see below).
 - A results table with one row per recipe: the recipe, with its average score and stars underneath, and the cards in its best deck. Finding the best deck scores each play order of each deck once; once a recipe's best deck is found, it's scored again with the samples setting, and the row shows that steadier average, a bar with its chance of earning exactly 0, 1, 2… stars, and its lowest and highest scores seen.
@@ -94,7 +95,7 @@ Or build once and run the binary directly:
 
 ```sh
 cargo build --release
-./target/release/afkjourney-crafting --location forge
+./target/release/afkjourney-crafting --location forge --forge 11
 ```
 
 Run it from the repository root, or pass `--data-dir`, so it can find the `data` folder.
@@ -105,73 +106,64 @@ Run it from the repository root, or pass `--data-dir`, so it can find the `data`
 |---|---|
 | `-r`, `--recipe <RECIPE>` | Run only this recipe. The name must match one in `recipes.ron`, ignoring case. Exits with an error if there's no match. Takes priority over `--location`. |
 | `-l`, `--location <LOCATION>` | Run only recipes at this location: `kitchen`, `forge` or `alchemy` (any case). Ignored when `--recipe` is also given. |
-| `-i`, `--inventory <FILE>` | Use this inventory file instead of the default `<DATA_DIR>/inventory.ron`. Useful for trying out card upgrades or comparing accounts. |
-| `-d`, `--data-dir <DIR>` | Folder holding `cards.ron`, `recipes.ron`, `facilities.ron` and the default `inventory.ron`. Defaults to `data`. |
+| `-k`, `--kitchen <LEVEL>` | Your Kitchen's facility level, from 1 to 20. Defaults to 1. |
+| `-f`, `--forge <LEVEL>` | Your Forge's facility level, from 1 to 20. Defaults to 1. |
+| `-a`, `--alchemy <LEVEL>` | Your Alchemy facility level, from 1 to 20. Defaults to 1. |
+| `-d`, `--data-dir <DIR>` | Folder holding `cards.ron`, `recipes.ron` and `facilities.ron`. Defaults to `data`. |
+| `-s`, `--samples <SAMPLES>` | About how many crafts to score each best deck with, for its stats. Every play order is scored the same number of times, and at least once. Defaults to 50,000, the web page's default. More is steadier but slower. |
 | `-h`, `--help` | Print help. |
 | `-V`, `--version` | Print the version. |
 
-With no options, every recipe in `recipes.ron` is run.
+Each facility level sets every card at that location to the highest level and most copies the level allows, from [`facilities.ron`](#facilitiesron-what-each-facility-level-allows), and leaves out cards it hasn't unlocked. The levels in use are printed before the run.
+
+With no options, every recipe unlocked at facility level 1 is run.
 
 ### Examples
 
 ```sh
-# One recipe
-cargo run --release -- -r "copper carver"
+# One recipe, with a level 5 Forge
+cargo run --release -- -r "copper carver" -f 5
 
-# All Alchemy recipes
-cargo run --release -- -l alchemy
+# All Alchemy recipes unlocked at Alchemy level 11
+cargo run --release -- -l alchemy -a 11
 
-# What if I upgraded some cards?
-cargo run --release -- -l kitchen -i data/inventory-upgraded.ron
+# Every unlocked recipe, with your level of each facility
+cargo run --release -- -k 12 -f 11 -a 11
+
+# Steadier stats for the best decks
+cargo run --release -- -l forge -s 1000000
 ```
 
 ## Reading the output
 
 ```text
-Round Bread has 86 unique decks
-Round Bread: ████████████████████████████████████ 86/86 [00:00:00<00:00:00]
-Round Bread
-    Min: 76x61 (4636) **
-    Avg: 4636 **
-    Max: 76x61 (4636) **
-    Cards for Average:
-      Heat Control (lvl 7), Heat Control (lvl 7), Heat Control (lvl 7)
+Fireward Ring has 7859 unique decks
+Fireward Ring: ██████████████████████████████████ 7859/7859 [00:00:01<00:00:00]
+Sampling best decks: ███████████████████████████████████████ 1/1 [00:00:00<00:00:00]
+
+Fireward Ring
+    Avg:    59948 ****
+    Low:    279x49 (13671) ****
+    High:   478x302 (144356) ****
+    Stars:  0* 0.0% | 1* 0.0% | 2* 0.0% | 3* 0.0% | 4* 100.0%
+    Scored: 45,360 play orders × 2 rolls = 90,720 crafts
+    Cards:  2× Grind (lvl 8), Distill (lvl 1), Crystallize (lvl 1), 2× Overload (lvl 2), 2× Enchant (lvl 4), Reversal (lvl 1)
 ```
 
-- **Min / Max** show the two colour values as `left x right`, then the final score (their product) in brackets.
-- **Avg** is the average final score over every play order of the chosen deck.
-- The `*`s are the stars that score earns, from the recipe's thresholds.
-- **Cards for Average** is the winning deck. The order shown is not a recommended play order.
+These are the same stats the web page's **Best decks** table shows.
 
-Summaries for all recipes are printed together after the last progress bar finishes.
+- **Avg** is the best deck's average final score over every craft it was sampled with.
+- **Low / High** are the lowest and highest scoring crafts seen, as the two colour values `left x right`, then the final score (their product) in brackets. They spread wider with more samples.
+- The `*`s are the stars a score earns, from the recipe's thresholds.
+- **Stars** is the share of crafts that earned exactly 0, 1, 2… stars, adding up to 100%.
+- **Scored** is how the deck was sampled: every distinct play order, rolled the same number of times for about `--samples` crafts in all.
+- **Cards** is the best deck, with repeated cards counted. The order shown is not a recommended play order.
+
+Once every recipe's best deck is found, they're all sampled together, and the stats for every recipe are printed after the last progress bar finishes. A recipe without enough cards for a deck says so.
 
 ## Data files
 
 All game data lives in [RON](https://github.com/ron-rs/ron) files in `data/`, so values can be changed without recompiling. Lines starting with `//` are comments.
-
-### `inventory.ron`: your cards
-
-For each location, your facility's `level` and the cards you own there: how many copies may go in one deck (`limit`) and the card's current `level`.
-
-```ron
-#![enable(implicit_some)]
-{
-	Kitchen: (
-		level: 11,
-		cards: {
-			HeatControl: (limit: 4, level: 7),
-			Cut: (limit: 4, level: 8),
-			// ...
-		},
-	),
-	Forge: ( /* ... */ ),
-	Alchemy: ( /* ... */ ),
-}
-```
-
-The facility `level` is optional. When it's set, each card's level and copies are lowered to what that facility level allows in [`facilities.ron`](#facilitiesron-what-each-facility-level-allows), and cards that aren't unlocked yet are left out. The command line notes each card it caps. Leave the level out to use your values as they are. The first line, `#![enable(implicit_some)]`, lets you write `level: 11` instead of `level: Some(11)`.
-
-A card left out of a location is never used there. Card names are the `CardKind` names from [src/card.rs](src/card.rs), such as `HeatControl`, `MultiForge` and `ForgeExpert`.
 
 ### `recipes.ron`: what to craft
 
@@ -211,9 +203,9 @@ Kitchen: (
 ),
 ```
 
-With a facility level set in `inventory.ron`, recipes that unlock at a higher level are skipped in `--location` and full runs. A recipe asked for with `--recipe` still runs, with a warning. A recipe that isn't listed counts as unlocked. For now every recipe is listed under level 1, until their unlock levels are known.
+Recipes that unlock above your facility level are skipped in `--location` and full runs. A recipe asked for with `--recipe` still runs, with a warning. A recipe that isn't listed counts as unlocked. For now every recipe is listed under level 1, until their unlock levels are known.
 
-`0` means the card isn't unlocked yet at that level. A facility level that isn't listed, or a card that isn't listed for a level, has no known cap, so the inventory's values are used as they are. That lets the table be filled in a bit at a time. The current data covers levels 1 to 11 (`card_levels`) and 1 to 10 (`card_limits`), from [@MatsuTaku's](https://github.com/MatsuTaku) optimizer, for most cards. The comment at the top of the file lists the cards that aren't covered yet.
+`0` means the card isn't unlocked yet at that level. A facility level that isn't listed, or a card that isn't listed for a level, has no known cap, so the command line gives it no copies, and the web page leaves your values for it as they are. That lets the table be filled in a bit at a time. The current data covers levels 1 to 11 (`card_levels`) and 1 to 10 (`card_limits`), from [@MatsuTaku's](https://github.com/MatsuTaku) optimizer, for most cards. The comment at the top of the file lists the cards that aren't covered yet.
 
 ### `cards.ron`: card values by level
 
@@ -235,7 +227,7 @@ Edit this file when a card's in-game numbers are confirmed or change.
 | [src/main.rs](src/main.rs) | Entry point: the command line calculator natively, the web app in the browser. |
 | [src/cli.rs](src/cli.rs) | Command line options, loading data, running recipes and printing results. |
 | [src/lib.rs](src/lib.rs) | The scoring library shared by the command line and the web app. |
-| [src/inventory.rs](src/inventory.rs) | The facility levels and owned cards in `inventory.ron`. |
+| [src/inventory.rs](src/inventory.rs) | Your facility levels and cards at each location, and maxing every card for a facility level. |
 | [src/facility.rs](src/facility.rs) | The facility level caps in `facilities.ron`. |
 | [src/info.rs](src/info.rs) | The Cards and Facilities pages' data: card descriptions, unlock and upgrade levels, values by level, and what unlocks at each facility level. |
 | [src/web/app.rs](src/web/app.rs) | The Yew page: location tabs, card inputs, recipe selector, results table and deck builder. |
@@ -253,8 +245,8 @@ Run the tests with `cargo test`.
 ## Limitations
 
 - Some card values in `cards.ron` are guesses or placeholders, marked `TODO` or `A guess`. This is because the AFK Journey wiki does not contain this information, nor can you view the previous levels in the game, only the current and next levels. A lot of the values I found prior to my levels are from [@MatsuTaku's](https://github.com/MatsuTaku) [AFK Journey Techcard Optimizer](https://github.com/MatsuTaku/afkjourney-techcard-optimizer), some of which were outdated to do patches.
-- Facility level caps are only known up to level 11 and not for every card (see [`facilities.ron`](#facilitiesron-what-each-facility-level-allows)). Above that, or for unlisted cards, set `limit` and `level` in `inventory.ron` to what your facility currently allows.
-- Cards with random effects (Heat Control, Cut, random-colour hits) are scored once per distinct play order, so a deck with few distinct orders, such as three copies of one card, gets few random samples.
+- Facility level caps are only known up to level 11 and not for every card (see [`facilities.ron`](#facilitiesron-what-each-facility-level-allows)). Above that, or for unlisted cards, use the web page and set each card's level and limit to what your facility currently allows.
+- While searching for the best deck, cards with random effects (Heat Control, Cut, random-colour hits) are scored once per distinct play order, so a deck with few distinct orders, such as three copies of one card, gets few random samples. The best deck's reported stats use the samples setting, so they're steadier, but the search itself can still pick a deck that was lucky.
 
 ## Roadmap Items
 
@@ -262,7 +254,6 @@ Run the tests with `cargo test`.
   - The cards will eventually show the full card and the level text for each card/level combo
   - Facilities will hopefully just be higher-res
   - Recipes will also be hopefully higher-res.
-- Update the command line version to display the same stat data as individual recipes show in the web
 - Verify and validate all cards based on in game scoring, some of the card's descriptions are a bit ambiguous to how they actually score, same for recipe powers.
 - Hovering over cards should display their abilities
 - Add a recipe section, like the Cards page, that shows information about each recipe

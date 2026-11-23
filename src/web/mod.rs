@@ -24,8 +24,9 @@ pub mod data {
 		ron::from_str(include_str!("../../data/recipes.ron")).expect("data/recipes.ron should parse")
 	}
 
-	/// The starting inventory, used until the player edits theirs.
+	/// The starting inventory, used until the player edits theirs: every
+	/// facility at level 1, with every card at the most that level allows.
 	pub fn default_inventory() -> Inventory {
-		ron::from_str(include_str!("../../data/inventory.ron")).expect("data/inventory.ron should parse")
+		crate::inventory::maxed_inventory(&facilities(), |_| 1)
 	}
 }
