@@ -257,3 +257,6 @@ Run the tests with `cargo test`.
   - Recipes will also be hopefully higher-res.
 - Update the command line version to display the same stat data as individual recipes show in the web
 - Verify and validate all cards based on in game scoring, some of the card's descriptions are a bit ambiguous to how they actually score, same for recipe powers.
+- Hovering over cards should display their abilities
+- Add a card section that shows information about the card including how it scores, the facility level it unlocks, and the limit at each facility level
+  - The same for recipes
