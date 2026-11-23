@@ -57,6 +57,8 @@ pub struct StatsJob {
 	/// Index into [`super::data::recipes`].
 	pub recipe: usize,
 	pub cards: Vec<Card>,
+	/// About how many crafts to score in all. See [`Deck::stats`].
+	pub samples: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,7 +126,7 @@ impl CraftWorker {
 
 	fn stats(&self, job: StatsJob) -> StatsDone {
 		let deck = Deck { cards: job.cards };
-		let stats = deck.stats(&self.recipes[job.recipe], &self.tables, &mut rand::rng());
+		let stats = deck.stats(&self.recipes[job.recipe], &self.tables, job.samples, &mut rand::rng());
 		StatsDone { recipe: job.recipe, stats }
 	}
 }

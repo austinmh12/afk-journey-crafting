@@ -304,6 +304,7 @@ mod tests {
 		let stats = |level: u8, average| DeckStats {
 			cards: vec![Card { kind: Cut, level }],
 			orders: 1,
+			rolls: 1,
 			average,
 			minimum: Default::default(),
 			maximum: Default::default(),

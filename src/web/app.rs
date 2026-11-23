@@ -11,7 +11,7 @@ use super::data;
 use super::worker::{BestDeck, CraftWorker, Job, JobDone, Request, Response, StatsDone, StatsJob};
 use crate::builder::{self, Builder, DragSource, DropTarget, Stats};
 use crate::card::{Card, CardKind};
-use crate::deck::DeckStats;
+use crate::deck::{self, DeckStats};
 use crate::facility::{self, Facilities};
 use crate::images;
 use crate::inventory::{Facility, Inventory, Owned, available_cards};
@@ -21,6 +21,16 @@ use crate::recipe::{Location, Recipe};
 const STORAGE_KEY: &str = "afkjourney-crafting.inventory";
 /// Where the deck builder's history is saved in the browser.
 const HISTORY_KEY: &str = "afkjourney-crafting.history";
+/// Where the deck builder's samples setting is saved in the browser.
+const SAMPLES_KEY: &str = "afkjourney-crafting.samples";
+/// The deck builder's samples settings: about how many crafts to score per deck.
+const SAMPLE_OPTIONS: [(u64, &str); 4] = [
+	(10_000, "10,000 (fast)"),
+	(50_000, "50,000"),
+	(250_000, "250,000"),
+	(1_000_000, "1,000,000 (precise)"),
+];
+const DEFAULT_SAMPLES: u64 = 50_000;
 /// Path to the worker script `trunk` builds from `src/bin/worker.rs`.
 const WORKER_PATH: &str = "worker.js";
 const MAX_WORKERS: usize = 32;
@@ -86,6 +96,8 @@ pub enum Msg {
 	LoadDeck(usize),
 	RemoveHistory(usize),
 	ClearHistory,
+	/// About how many crafts to score per deck in the deck builder.
+	SetSamples(u64),
 }
 
 /// The best deck found for a recipe, from either the calculator or the deck builder.
@@ -213,6 +225,8 @@ pub struct App {
 	search_id: u32,
 	/// The decks scored in the deck builder, newest first, by recipe name.
 	history: BTreeMap<String, Vec<DeckStats>>,
+	/// About how many crafts the deck builder scores per deck.
+	samples: u64,
 }
 
 impl Component for App {
@@ -238,6 +252,10 @@ impl Component for App {
 			search: None,
 			search_id: 0,
 			history: load_history(),
+			samples: LocalStorage::get::<u64>(SAMPLES_KEY)
+				.ok()
+				.filter(|samples| SAMPLE_OPTIONS.iter().any(|&(option, _)| option == *samples))
+				.unwrap_or(DEFAULT_SAMPLES),
 		}
 	}
 
@@ -373,6 +391,11 @@ impl Component for App {
 					entries.remove(index);
 					save_history(&self.history);
 				}
+			}
+			Msg::SetSamples(samples) => {
+				self.samples = samples;
+				// Not being able to save only loses the setting on reload
+				let _ = LocalStorage::set(SAMPLES_KEY, samples);
 			}
 			Msg::ClearHistory => {
 				let Some(recipe) = self.builder().recipe else { return false };
@@ -523,6 +546,7 @@ impl App {
 			})
 			.spawn(WORKER_PATH);
 		worker.send(Request::Stats(StatsJob {
+			samples: self.samples,
 			recipe,
 			cards: cards.clone(),
 		}));
@@ -995,13 +1019,26 @@ impl App {
 			&& self.drop_target == Some(DropTarget::Inventory);
 		let (ondragover, ondragleave, ondrop) = drop_handlers(link, DropTarget::Inventory);
 
-		let status = if !builder.is_full() {
-			let left = builder.slots.len() - filled;
-			format!("Add {left} more {} to score the deck.", if left == 1 { "card" } else { "cards" })
-		} else if scoring {
-			"Scoring every play order…".to_string()
-		} else {
-			String::new()
+		// How the samples setting would score this deck
+		let plan = builder.deck(&available).map(|cards| {
+			let orders = deck::distinct_orders(&cards);
+			let rolls = deck::rolls_per_order(orders, self.samples);
+			(orders, rolls, orders * rolls)
+		});
+		let status = match plan {
+			None => {
+				let left = builder.slots.len() - filled;
+				format!("Add {left} more {} to score the deck.", if left == 1 { "card" } else { "cards" })
+			}
+			Some((_, _, crafts)) if scoring => format!("Scoring {} crafts…", group_digits(crafts)),
+			Some((orders, rolls, crafts)) => format!(
+				"{} play {} × {} {} = {} crafts",
+				group_digits(orders),
+				if orders == 1 { "order" } else { "orders" },
+				group_digits(rolls),
+				if rolls == 1 { "roll" } else { "rolls" },
+				group_digits(crafts),
+			),
 		};
 
 		html! {
@@ -1041,6 +1078,19 @@ impl App {
 					<button class="button subtle" disabled={filled == 0} onclick={link.callback(|_| Msg::BuilderClear)}>
 						{ "Clear deck" }
 					</button>
+					<label class="samples" title="About how many crafts to score. Each play order is scored the same number of times, and at least once, so decks with fewer play orders get more rolls of each.">
+						<span>{ "Samples" }</span>
+						<select
+							disabled={scoring}
+							onchange={link.batch_callback(|e: Event| {
+								e.target_unchecked_into::<HtmlSelectElement>().value().parse().ok().map(Msg::SetSamples)
+							})}
+						>
+							{ for SAMPLE_OPTIONS.iter().map(|&(samples, label)| html! {
+								<option value={samples.to_string()} selected={samples == self.samples}>{ label }</option>
+							}) }
+						</select>
+					</label>
 					<span class="status" aria-live="polite">{ status }</span>
 				</div>
 
@@ -1158,12 +1208,17 @@ impl App {
 						<span class="stat-value">{ stats.average }</span>
 						<span class="stat-detail">{ view_stars(recipe, stats.average) }</span>
 					</div>
-					{ played("Lowest", &stats.minimum) }
-					{ played("Highest", &stats.maximum) }
+					{ played("Lowest seen", &stats.minimum) }
+					{ played("Highest seen", &stats.maximum) }
 					<div class="stat">
 						<span class="stat-label">{ "Play orders" }</span>
 						<span class="stat-value">{ stats.orders }</span>
-						<span class="stat-detail">{ "distinct orders scored" }</span>
+						<span class="stat-detail">
+							{ match stats.rolls {
+								1 => format!("scored once each, {} crafts", group_digits(stats.crafts())),
+								rolls => format!("scored {rolls} times each, {} crafts", group_digits(stats.crafts())),
+							} }
+						</span>
 					</div>
 				</div>
 
@@ -1173,7 +1228,7 @@ impl App {
 					<h4>{ "Chance of each star" }</h4>
 					<ul class="star-chances">
 						{ for stats.star_counts().iter().zip(builder::tenths_of_percent(&stats.star_counts())).enumerate().map(|(stars, (&count, tenths))| {
-							let share = count as f64 / stats.orders.max(1) as f64 * 100.0;
+							let share = count as f64 / stats.crafts().max(1) as f64 * 100.0;
 							// The score range that earns exactly this many stars
 							let range = match (stars.checked_sub(1).map(|i| recipe.stars[i]), recipe.stars.get(stars)) {
 								(None, Some(next)) => format!("under {next}"),
@@ -1207,7 +1262,7 @@ impl App {
 				<h4>{ "Lowest-scoring play order" }</h4>
 				{ view_order(&stats.minimum.order) }
 				<p class="hint">
-					{ "Random effects are rolled once per play order, so scores can change a little each time the deck is scored." }
+					{ "Each play order is scored several times to even out random effects. Lowest and highest are the extremes of every craft, so they spread wider with more samples. Raise the samples for steadier results." }
 				</p>
 			</div>
 		}
@@ -1352,7 +1407,7 @@ impl App {
 								!= Some(card.level)
 						});
 						let top_share = entry.star_orders.last().map(|&count| {
-							percent(count as f64 / entry.orders.max(1) as f64 * 100.0)
+							percent(count as f64 / entry.crafts().max(1) as f64 * 100.0)
 						});
 						html! {
 							<li class={classes!("history-entry", is_current.then_some("current"))}>
@@ -1573,6 +1628,19 @@ fn load_history() -> BTreeMap<String, Vec<DeckStats>> {
 		.ok()
 		.and_then(|text| ron::from_str(&text).ok())
 		.unwrap_or_default()
+}
+
+/// `n` with commas between groups of three digits, e.g. 1,000,000.
+fn group_digits(n: u64) -> String {
+	let digits = n.to_string();
+	let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
+	for (i, digit) in digits.chars().enumerate() {
+		if i > 0 && (digits.len() - i).is_multiple_of(3) {
+			grouped.push(',');
+		}
+		grouped.push(digit);
+	}
+	grouped
 }
 
 fn save_history(history: &BTreeMap<String, Vec<DeckStats>>) {

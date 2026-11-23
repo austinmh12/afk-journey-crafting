@@ -59,7 +59,7 @@ impl Deck {
 	/// Scores every distinct play order of this deck.
 	pub fn score<R: Rng + ?Sized>(&self, recipe: &Recipe, tables: &CardTables, rng: &mut R) -> ScoreResults {
 		let mut results: Option<ScoreResults> = None;
-		for_each_order(&self.cards, recipe, tables, rng, |_, score| match &mut results {
+		for_each_order(&self.cards, 1, recipe, tables, rng, |_, score| match &mut results {
 			Some(results) => results.push(score),
 			None => results = Some(ScoreResults::new(score)),
 		});
@@ -67,18 +67,30 @@ impl Deck {
 	}
 
 	/// Scores every distinct play order of this deck and gathers stats about them,
-	/// including the orders that scored lowest and highest.
-	pub fn stats<R: Rng + ?Sized>(&self, recipe: &Recipe, tables: &CardTables, rng: &mut R) -> DeckStats {
+	/// including the crafts that scored lowest and highest.
+	///
+	/// Random effects make one craft of a play order a single sample of what it
+	/// can score. To keep that noise about the same for every deck, each order is
+	/// scored enough times for about `samples` crafts in all, and at least once.
+	pub fn stats<R: Rng + ?Sized>(
+		&self,
+		recipe: &Recipe,
+		tables: &CardTables,
+		samples: u64,
+		rng: &mut R,
+	) -> DeckStats {
 		let mut cards = self.cards.clone();
 		cards.sort();
+		let orders = distinct_orders(&cards);
+		let rolls = rolls_per_order(orders, samples);
 		let mut results: Option<ScoreResults> = None;
 		let mut minimum = Played::default();
 		let mut maximum = Played::default();
 		let mut star_orders = vec![0; recipe.stars.len()];
-		for_each_order(&cards, recipe, tables, rng, |order, score| {
+		for_each_order(&cards, rolls, recipe, tables, rng, |order, score| {
 			match &mut results {
 				Some(results) => {
-					// Strict comparisons keep the first order seen on ties, like ScoreResults
+					// Strict comparisons keep the first craft seen on ties, like ScoreResults
 					if score.total() < results.minimum.total() {
 						minimum = Played::new(order, score);
 					}
@@ -98,8 +110,10 @@ impl Deck {
 			}
 		});
 		let results = results.expect("a deck has at least one play order");
+		debug_assert_eq!(results.count as u64, orders * rolls);
 		DeckStats {
-			orders: results.count as u64,
+			orders,
+			rolls,
 			average: results.average(),
 			minimum,
 			maximum,
@@ -138,23 +152,36 @@ pub struct DeckStats {
 	pub cards: Vec<Card>,
 	/// How many distinct play orders were scored.
 	pub orders: u64,
-	/// Average score over every play order.
+	/// How many times each play order was scored. Decks scored before this was
+	/// added were scored once per order.
+	#[serde(default = "one")]
+	pub rolls: u64,
+	/// Average score over every craft.
 	pub average: i64,
-	/// The lowest-scoring play order (the first one, on ties).
+	/// The lowest-scoring craft (the first one, on ties).
 	pub minimum: Played,
-	/// The highest-scoring play order (the first one, on ties).
+	/// The highest-scoring craft (the first one, on ties).
 	pub maximum: Played,
-	/// How many play orders earned at least each star, lowest star first.
+	/// How many crafts earned at least each star, lowest star first.
 	pub star_orders: Vec<u64>,
 }
 
+fn one() -> u64 {
+	1
+}
+
 impl DeckStats {
-	/// How many play orders earned exactly 0, 1, 2… stars, up to every star, so
-	/// they add up to [`Self::orders`].
+	/// How many crafts were scored: every play order, [`Self::rolls`] times each.
+	pub fn crafts(&self) -> u64 {
+		self.orders * self.rolls
+	}
+
+	/// How many crafts earned exactly 0, 1, 2… stars, up to every star, so they
+	/// add up to [`Self::crafts`].
 	pub fn star_counts(&self) -> Vec<u64> {
-		// `star_orders` counts orders that earned at least each star
+		// `star_orders` counts crafts that earned at least each star
 		let at_least = |stars: usize| match stars {
-			0 => self.orders,
+			0 => self.crafts(),
 			_ => self.star_orders.get(stars - 1).copied().unwrap_or(0),
 		};
 		(0..=self.star_orders.len())
@@ -163,10 +190,28 @@ impl DeckStats {
 	}
 }
 
-/// Scores every distinct play order of `cards`, which must be sorted to start
-/// from the first order, and calls `f` with each order and its score.
+/// How many distinct play orders `cards` has, given sorted: the number of
+/// permutations, divided by the orderings of each card's copies among themselves.
+pub fn distinct_orders(cards: &[Card]) -> u64 {
+	let factorial = |n: usize| (1..=n as u64).product::<u64>();
+	let mut orders = factorial(cards.len());
+	for copies in cards.chunk_by(|a, b| a == b) {
+		orders /= factorial(copies.len());
+	}
+	orders
+}
+
+/// How many times to score each of `orders` play orders for about `samples`
+/// crafts in all: rounded up, and at least once.
+pub fn rolls_per_order(orders: u64, samples: u64) -> u64 {
+	samples.div_ceil(orders.max(1)).max(1)
+}
+
+/// Scores every distinct play order of `cards` `rolls` times, and calls `f` with
+/// each order and its score. `cards` must be sorted to start from the first order.
 fn for_each_order<R: Rng + ?Sized>(
 	cards: &[Card],
+	rolls: u64,
 	recipe: &Recipe,
 	tables: &CardTables,
 	rng: &mut R,
@@ -174,8 +219,10 @@ fn for_each_order<R: Rng + ?Sized>(
 ) {
 	let mut order = cards.to_vec();
 	loop {
-		let score = score_order(&order, recipe, tables, rng);
-		f(&order, score);
+		for _ in 0..rolls {
+			let score = score_order(&order, recipe, tables, rng);
+			f(&order, score);
+		}
 		if !next_permutation(&mut order) {
 			break;
 		}
@@ -546,7 +593,9 @@ mod tests {
 		};
 		// Unsorted on purpose: stats sorts the deck to cover every order
 		let deck = Deck { cards: vec![card(Reforge), card(Banquet), card(Reforge)] };
-		let stats = deck.stats(&recipe, &tables(), &mut rand::rng());
+		// A budget of 1 scores each order once
+		let stats = deck.stats(&recipe, &tables(), 1, &mut rand::rng());
+		assert_eq!(stats.rolls, 1);
 		assert_eq!(stats.cards, vec![card(Banquet), card(Reforge), card(Reforge)]);
 		assert_eq!(stats.orders, 3);
 		assert_eq!(stats.average, (121 + 256 + 256) / 3);
@@ -558,9 +607,40 @@ mod tests {
 		assert_eq!(stats.star_orders, vec![3, 2, 0]);
 		// Exactly 0, 1, 2 and 3 stars: one order at 121 (1 star), two at 256 (2 stars)
 		assert_eq!(stats.star_counts(), vec![0, 1, 2, 0]);
+		// No random effects, so more rolls give the same stats, with every count 10 times over
+		let sampled = deck.stats(&recipe, &tables(), 30, &mut rand::rng());
+		assert_eq!((sampled.orders, sampled.rolls, sampled.crafts()), (3, 10, 30));
+		assert_eq!(sampled.average, stats.average);
+		assert_eq!(sampled.star_counts(), vec![0, 10, 20, 0]);
+		assert_eq!((sampled.minimum.clone(), sampled.maximum.clone()), (stats.minimum.clone(), stats.maximum.clone()));
 		// Matches the calculator's scoring of the same deck
 		let sorted = Deck { cards: stats.cards.clone() };
 		assert_eq!(sorted.score(&recipe, &tables(), &mut rand::rng()).average(), stats.average);
+	}
+
+	#[test]
+	fn counting_orders_and_rolls() {
+		use CardKind::*;
+		let cards = |kinds: &[CardKind]| kinds.iter().map(|&kind| card(kind)).collect::<Vec<_>>();
+		assert_eq!(distinct_orders(&cards(&[Cut, Cut, Season])), 3);
+		assert_eq!(distinct_orders(&cards(&[Cut; 5])), 1);
+		// 8! / (2! 3!)
+		assert_eq!(distinct_orders(&cards(&[Cut, Cut, Season, Bake, Bake, Bake, Ferment, Banquet])), 3360);
+		assert_eq!(distinct_orders(&cards(&[Cut, Season, Bake, Ferment, Banquet, SlowCook, HeatControl, ExactCook, Forge])), 362_880);
+		assert_eq!(rolls_per_order(1, 50_000), 50_000);
+		// Rounded up
+		assert_eq!(rolls_per_order(3360, 50_000), 15);
+		// Every order at least once, even past the budget
+		assert_eq!(rolls_per_order(362_880, 50_000), 1);
+		assert_eq!(rolls_per_order(3, 0), 1);
+	}
+
+	#[test]
+	fn stats_saved_before_rolls_were_scored_once_per_order() {
+		let saved = "(cards: [], orders: 6, average: 10, minimum: (order: [], left: 1, right: 1), 			maximum: (order: [], left: 1, right: 1), star_orders: [4, 1])";
+		let stats: DeckStats = ron::from_str(saved).unwrap();
+		assert_eq!((stats.rolls, stats.crafts()), (1, 6));
+		assert_eq!(stats.star_counts(), vec![2, 3, 1]);
 	}
 
 	#[test]
