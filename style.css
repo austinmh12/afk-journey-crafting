@@ -1083,3 +1083,64 @@ main.wide {
 	font-weight: 400;
 	padding: 4px 6px;
 }
+
+/* ---------- Best deck beside the builder's deck in the star chances ---------- */
+
+.meters {
+	display: grid;
+	gap: 3px;
+}
+
+.meter.best .meter-fill {
+	background: var(--accent);
+}
+
+.star-chances .share {
+	display: grid;
+	line-height: 1.25;
+}
+
+.best-share {
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: var(--accent);
+}
+
+.star-chances.with-best {
+	row-gap: 10px;
+}
+
+.star-legend {
+	display: flex;
+	gap: 16px;
+	margin: 0 0 8px;
+	font-size: 0.8rem;
+	color: var(--muted);
+}
+
+.legend-you::before,
+.legend-best::before {
+	content: "";
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	margin-right: 6px;
+	border-radius: 2px;
+	vertical-align: -1px;
+	background: var(--star);
+}
+
+.legend-best::before {
+	background: var(--accent);
+}
+
+.best-sampling {
+	margin-left: 6px;
+	font-size: 0.8rem;
+}
+
+.stat-detail .button.subtle {
+	margin-left: 6px;
+	padding: 1px 8px;
+	font-size: 0.78rem;
+}

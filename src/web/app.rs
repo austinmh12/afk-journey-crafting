@@ -98,6 +98,8 @@ pub enum Msg {
 	ClearHistory,
 	/// About how many crafts to score per deck in the deck builder.
 	SetSamples(u64),
+	/// Scores the best deck for the deck builder's recipe with the samples setting.
+	ScoreBest,
 }
 
 /// The best deck found for a recipe, from either the calculator or the deck builder.
@@ -107,6 +109,20 @@ struct KnownBest {
 	cards: Vec<(Card, usize)>,
 	/// `None` when there weren't enough cards for the recipe.
 	best: Option<BestDeck>,
+}
+
+/// The best deck for a recipe, scored the way the deck builder scores decks, so
+/// the two compare like for like.
+struct BestStats {
+	/// The best deck's cards, sorted.
+	cards: Vec<Card>,
+	/// The samples setting it was scored with.
+	samples: u64,
+	/// `None` while it's being scored.
+	result: Option<DeckStats>,
+	/// Being scored as the deck builder's deck, which is the same deck, rather
+	/// than by its own worker.
+	from_builder: bool,
 }
 
 /// The deck builder's search for the best deck for one recipe, to compare with.
@@ -227,6 +243,10 @@ pub struct App {
 	history: BTreeMap<String, Vec<DeckStats>>,
 	/// About how many crafts the deck builder scores per deck.
 	samples: u64,
+	/// The best deck for each recipe, scored like the deck builder's decks.
+	best_stats: BTreeMap<usize, BestStats>,
+	/// Scores the best deck. Replacing it cancels the deck it was scoring.
+	best_stats_worker: Option<WorkerBridge<CraftWorker>>,
 }
 
 impl Component for App {
@@ -256,6 +276,8 @@ impl Component for App {
 				.ok()
 				.filter(|samples| SAMPLE_OPTIONS.iter().any(|&(option, _)| option == *samples))
 				.unwrap_or(DEFAULT_SAMPLES),
+			best_stats: BTreeMap::new(),
+			best_stats_worker: None,
 		}
 	}
 
@@ -355,7 +377,9 @@ impl Component for App {
 				self.score_deck(ctx);
 				// Something to compare the deck with
 				self.find_best(ctx);
+				self.score_best(ctx);
 			}
+			Msg::ScoreBest => self.score_best(ctx),
 			Msg::StatsDone(done) => self.stats_done(done),
 			Msg::FindBest => self.find_best(ctx),
 			Msg::StopFindBest => {
@@ -367,6 +391,10 @@ impl Component for App {
 					return false;
 				}
 				self.search_job_done(worker, done);
+				if self.search.is_none() {
+					// Just found: score it like the builder's deck
+					self.score_best(ctx);
+				}
 			}
 			Msg::LoadDeck(index) => {
 				let Some(recipe) = self.builder().recipe else { return false };
@@ -537,6 +565,8 @@ impl App {
 				builder.stats = None;
 			}
 		}
+		// Including a best deck that was waiting on it
+		self.best_stats.retain(|_, best| best.result.is_some() || !best.from_builder);
 		let link = ctx.link().clone();
 		let worker = CraftWorker::spawner()
 			.callback(move |response| {
@@ -559,6 +589,14 @@ impl App {
 	}
 
 	fn stats_done(&mut self, done: StatsDone) {
+		// Either the best deck, the builder's deck, or both when they're the same deck
+		if let Some(best) = self.best_stats.get_mut(&done.recipe)
+			&& best.result.is_none()
+			&& best.cards == done.stats.cards
+		{
+			best.result = Some(done.stats.clone());
+			self.best_stats_worker = None;
+		}
 		let location = self.recipes[done.recipe].location;
 		let Some(stats) = self.builders.get_mut(&location).and_then(|builder| builder.stats.as_mut()) else {
 			return;
@@ -571,6 +609,67 @@ impl App {
 			// Done with the worker
 			self.stats_worker = None;
 		}
+	}
+
+	/// The best deck for `recipe` scored with the current samples setting, or being
+	/// scored, while it's still the best deck for the cards available now.
+	fn best_stats_for(&self, recipe: usize) -> Option<&BestStats> {
+		let cards = &self.known_best(recipe)?.best.as_ref()?.cards;
+		self.best_stats.get(&recipe).filter(|stats| &stats.cards == cards && stats.samples == self.samples)
+	}
+
+	/// The best deck's average for `recipe`: from scoring it with the samples
+	/// setting once that's done, otherwise from the search, which scores each
+	/// play order once.
+	fn best_average(&self, recipe: usize) -> Option<i64> {
+		let sampled = self.best_stats_for(recipe).and_then(|stats| stats.result.as_ref());
+		sampled.map(|stats| stats.average).or_else(|| Some(self.known_best(recipe)?.best.as_ref()?.average))
+	}
+
+	/// Scores the best deck for the deck builder's recipe with the samples setting,
+	/// once it's known, unless that's done or underway.
+	fn score_best(&mut self, ctx: &Context<Self>) {
+		let Some(recipe) = self.builder().recipe else { return };
+		let Some(cards) = self.known_best(recipe).and_then(|known| known.best.as_ref()).map(|best| best.cards.clone())
+		else {
+			return;
+		};
+		if self.best_stats_for(recipe).is_some() {
+			return;
+		}
+		let samples = self.samples;
+		// The builder's deck may be the best deck, already scored the same way, or
+		// being scored now (with the current setting), which fills this in too
+		let available = self.available();
+		let current = self.builder().current_stats(&available).filter(|stats| stats.cards == cards);
+		let scoring = current.is_some_and(|stats| stats.result.is_none());
+		let scored = current
+			.and_then(|stats| stats.result.clone())
+			.filter(|stats| stats.rolls == deck::rolls_per_order(stats.orders, samples));
+		if scored.is_none() && !scoring {
+			// The new worker replaces the old one, which cancels any deck it was scoring
+			self.best_stats.retain(|_, stats| stats.result.is_some());
+			let link = ctx.link().clone();
+			let worker = CraftWorker::spawner()
+				.callback(move |response| {
+					if let Response::Stats(done) = response {
+						link.send_message(Msg::StatsDone(done));
+					}
+				})
+				.spawn(WORKER_PATH);
+			worker.send(Request::Stats(StatsJob {
+				recipe,
+				cards: cards.clone(),
+				samples,
+			}));
+			self.best_stats_worker = Some(worker);
+		}
+		self.best_stats.insert(recipe, BestStats {
+			cards,
+			samples,
+			result: scored,
+			from_builder: scoring,
+		});
 	}
 
 	/// The decks scored for `recipe`, newest first.
@@ -1199,6 +1298,13 @@ impl App {
 				</div>
 			}
 		};
+		// The best deck scored the same way, to show its star chances beside these.
+		// Not when this is the best deck: the bars would match.
+		let best = self
+			.best_stats_for(recipe_index)
+			.and_then(|best| best.result.as_ref())
+			.filter(|best| best.cards != stats.cards);
+		let best_shares = best.map(star_shares);
 		html! {
 			<div class="stats">
 				<h3 class="subheading">{ "Deck stats" }</h3>
@@ -1226,9 +1332,14 @@ impl App {
 
 				if !recipe.stars.is_empty() {
 					<h4>{ "Chance of each star" }</h4>
-					<ul class="star-chances">
-						{ for stats.star_counts().iter().zip(builder::tenths_of_percent(&stats.star_counts())).enumerate().map(|(stars, (&count, tenths))| {
-							let share = count as f64 / stats.crafts().max(1) as f64 * 100.0;
+					if best.is_some() {
+						<p class="star-legend">
+							<span class="legend-you">{ "Your deck" }</span>
+							<span class="legend-best">{ "Best deck" }</span>
+						</p>
+					}
+					<ul class={classes!("star-chances", best.is_some().then_some("with-best"))}>
+						{ for star_shares(stats).into_iter().enumerate().map(|(stars, (share, shown))| {
 							// The score range that earns exactly this many stars
 							let range = match (stars.checked_sub(1).map(|i| recipe.stars[i]), recipe.stars.get(stars)) {
 								(None, Some(next)) => format!("under {next}"),
@@ -1236,21 +1347,29 @@ impl App {
 								(Some(threshold), None) => format!("{threshold}+"),
 								(None, None) => String::new(),
 							};
-							let shown = if count > 0 && tenths == 0 {
-								"<0.1%".to_string()
-							} else {
-								format!("{}.{}%", tenths / 10, tenths % 10)
-							};
+							let best_share = best_shares.as_ref().map(|shares| shares[stars].clone());
 							html! {
 								<li>
 									<span class="stars" aria-label={format!("{stars} stars")}>
 										{ format!("{}{}", str::repeat("★", stars), str::repeat("☆", recipe.stars.len() - stars)) }
 									</span>
 									<span class="muted">{ range }</span>
-									<span class="meter" aria-hidden="true">
-										<span class="meter-fill" style={format!("width: {share:.1}%")}></span>
+									<span class="meters" aria-hidden="true">
+										<span class="meter">
+											<span class="meter-fill" style={format!("width: {share:.1}%")}></span>
+										</span>
+										if let Some((best_share, _)) = &best_share {
+											<span class="meter best">
+												<span class="meter-fill" style={format!("width: {best_share:.1}%")}></span>
+											</span>
+										}
 									</span>
-									<span class="share">{ shown }</span>
+									<span class="share">
+										<span>{ shown }</span>
+										if let Some((_, best_shown)) = best_share {
+											<span class="best-share" aria-label={format!("best deck {best_shown}")}>{ best_shown }</span>
+										}
+									</span>
 								</li>
 							}
 						}) }
@@ -1274,13 +1393,15 @@ impl App {
 		let recipe = &self.recipes[recipe_index];
 		let body = match self.known_best(recipe_index) {
 			Some(KnownBest { best: Some(best), .. }) => {
-				let difference = stats.average - best.average;
+				let sampled = self.best_stats_for(recipe_index);
+				let best_average = self.best_average(recipe_index).unwrap_or(best.average);
+				let difference = stats.average - best_average;
 				let tone = match difference.signum() {
 					-1 => "behind",
 					1 => "ahead",
 					_ => "even",
 				};
-				let share = (best.average > 0).then(|| stats.average as f64 / best.average as f64 * 100.0);
+				let share = (best_average > 0).then(|| stats.average as f64 / best_average as f64 * 100.0);
 				// Both are sorted
 				let is_best = stats.cards == best.cards;
 				html! {
@@ -1293,8 +1414,27 @@ impl App {
 							</div>
 							<div class="stat">
 								<span class="stat-label">{ "Best average" }</span>
-								<span class="stat-value">{ best.average }</span>
-								<span class="stat-detail">{ view_stars(recipe, best.average) }</span>
+								<span class="stat-value">{ best_average }</span>
+								<span class="stat-detail">
+									{ view_stars(recipe, best_average) }
+									{ match sampled {
+										Some(BestStats { result: Some(result), .. }) => html! {
+											<span class="best-sampling">{ format!("{} crafts", group_digits(result.crafts())) }</span>
+										},
+										Some(_) => html! {
+											<span class="best-sampling">{ "Sampling…" }</span>
+										},
+										None => html! {
+											<button
+												class="button subtle"
+												title="The best average is from one roll per play order. Score the best deck with your samples setting to compare like for like."
+												onclick={link.callback(|_| Msg::ScoreBest)}
+											>
+												{ "Sample" }
+											</button>
+										},
+									} }
+								</span>
 							</div>
 							<div class={classes!("stat", "difference", tone)}>
 								<span class="stat-label">{ "Difference" }</span>
@@ -1370,7 +1510,7 @@ impl App {
 		let entries = self.history_for(recipe_index);
 		let available = self.available();
 		let current = builder.deck(&available);
-		let best = self.known_best(recipe_index).and_then(|known| known.best.as_ref());
+		let best = self.best_average(recipe_index);
 		let top = entries.iter().map(|entry| entry.average).max();
 		let top_star = recipe.stars.len();
 
@@ -1416,14 +1556,14 @@ impl App {
 									{ view_stars(recipe, entry.average) }
 									if let Some(best) = best {
 										<span
-											class={classes!("history-diff", match (entry.average - best.average).signum() {
+											class={classes!("history-diff", match (entry.average - best).signum() {
 												-1 => "behind",
 												1 => "ahead",
 												_ => "even",
 											})}
-											title={format!("Compared with the best deck's average of {}", best.average)}
+											title={format!("Compared with the best deck's average of {}", best)}
 										>
-											{ format!("{:+} vs best", entry.average - best.average) }
+											{ format!("{:+} vs best", entry.average - best) }
 										</span>
 									}
 								</div>
@@ -1628,6 +1768,25 @@ fn load_history() -> BTreeMap<String, Vec<DeckStats>> {
 		.ok()
 		.and_then(|text| ron::from_str(&text).ok())
 		.unwrap_or_default()
+}
+
+/// Each star count's share of a deck's crafts, from 0 stars up: the share as a
+/// percentage, for drawing, and as text rounded so the shares add up to 100%.
+fn star_shares(stats: &DeckStats) -> Vec<(f64, String)> {
+	let counts = stats.star_counts();
+	let total = stats.crafts().max(1) as f64;
+	counts
+		.iter()
+		.zip(builder::tenths_of_percent(&counts))
+		.map(|(&count, tenths)| {
+			let shown = if count > 0 && tenths == 0 {
+				"<0.1%".to_string()
+			} else {
+				format!("{}.{}%", tenths / 10, tenths % 10)
+			};
+			(count as f64 / total * 100.0, shown)
+		})
+		.collect()
 }
 
 /// `n` with commas between groups of three digits, e.g. 1,000,000.
