@@ -250,5 +250,9 @@ Run the tests with `cargo test`.
 
 ## Roadmap Items
 
-- Add different scoring modes such as the highest scoring deck for a recipe or the lowest scoring, etc.
-- Add visualization of the decks being scored to the web front end
+- Update visuals for cards, facilities, and recipes. 
+  - The cards will eventually show the full card and the level text for each card/level combo
+  - Facilities will hopefully just be higher-res
+  - Recipes will also be hopefully higher-res.
+- Update the command line version to display the same stat data as individual recipes show in the web
+- Verify and validate all cards based on in game scoring, some of the card's descriptions are a bit ambiguous to how they actually score, same for recipe powers.
