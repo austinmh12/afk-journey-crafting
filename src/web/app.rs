@@ -14,8 +14,10 @@ use crate::card::{Card, CardKind};
 use crate::deck::{self, DeckStats};
 use crate::facility::{self, Facilities};
 use crate::images;
+use crate::info;
 use crate::inventory::{Facility, Inventory, Owned, available_cards};
 use crate::recipe::{Location, Recipe};
+use crate::tables::CardTables;
 
 /// Where the player's edited inventory is saved in the browser.
 const STORAGE_KEY: &str = "afkjourney-crafting.inventory";
@@ -41,23 +43,26 @@ static EMPTY_BUILDER: Builder = Builder {
 	stats: None,
 };
 
-/// The two pages of the app.
+/// The pages of the app.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum View {
 	/// Builds a deck by hand and scores it. The page the app opens on.
 	Builder,
 	/// Finds the best deck for each recipe.
 	Calculator,
+	/// What each card does, when it unlocks and its values at each level.
+	Cards,
 }
 
 impl View {
 	/// In the order the sidebar lists them.
-	const ALL: [Self; 2] = [Self::Builder, Self::Calculator];
+	const ALL: [Self; 3] = [Self::Builder, Self::Calculator, Self::Cards];
 
 	fn name(self) -> &'static str {
 		match self {
 			Self::Builder => "Deck builder",
 			Self::Calculator => "Best decks",
+			Self::Cards => "Cards",
 		}
 	}
 
@@ -66,6 +71,7 @@ impl View {
 		match self {
 			Self::Builder => "Build and score your own deck",
 			Self::Calculator => "Find the best deck for each recipe",
+			Self::Cards => "What each card does at each level",
 		}
 	}
 
@@ -85,6 +91,13 @@ impl View {
 					<path d="M7 4h10v5a5 5 0 0 1-10 0z" />
 					<path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3" />
 					<path d="M12 14v4M8 21h8M9 18h6" />
+				</>
+			},
+			// An open book
+			Self::Cards => html! {
+				<>
+					<path d="M2 5h6a4 4 0 0 1 4 4v11a3 3 0 0 0-3-3H2z" />
+					<path d="M22 5h-6a4 4 0 0 0-4 4v11a3 3 0 0 1 3-3h7z" />
 				</>
 			},
 		};
@@ -288,6 +301,8 @@ impl Run {
 pub struct App {
 	recipes: Vec<Recipe>,
 	facilities: Facilities,
+	/// Card values by level, for the card guide.
+	tables: CardTables,
 	inventory: Inventory,
 	location: Location,
 	selected: Option<usize>,
@@ -329,6 +344,7 @@ impl Component for App {
 		Self {
 			recipes: data::recipes(),
 			facilities: data::facilities(),
+			tables: data::tables(),
 			inventory: load_inventory(),
 			location: Location::Kitchen,
 			selected: None,
@@ -563,10 +579,12 @@ impl Component for App {
 							</div>
 							{ self.view_history(link) }
 						</div>
-					} else {
+					} else if self.view == View::Calculator {
 						{ self.view_inventory(ctx) }
 						{ self.view_controls(ctx) }
 						{ self.view_results() }
+					} else {
+						{ self.view_card_guide() }
 					}
 				</main>
 				</div>
@@ -1762,6 +1780,132 @@ impl App {
 }
 
 /// A share of play orders as a percentage, without rounding a few orders down to 0%.
+impl App {
+	/// The card guide: one section per card at the current location.
+	fn view_card_guide(&self) -> Html {
+		let location = self.location;
+		let facility = self.facility();
+		let level_note = match facility.level {
+			Some(level) => format!(
+				" Rows your {} (level {level}) hasn't reached are faded, and the row for your level is highlighted.",
+				location.name()
+			),
+			None => " Set your facility level on the other pages to highlight the row for your level.".into(),
+		};
+		html! {
+			<>
+				<section class="panel" aria-labelledby="guide-heading">
+					<div class="heading-with-image">
+						{ image(images::facility(location), "facility-image") }
+						<h2 id="guide-heading">{ format!("{} cards", location.name()) }</h2>
+					</div>
+					<p class="hint guide-hint">
+						{ "How each card scores, and each facility level where it unlocks, levels up or allows more copies per deck, with its values at that card level. What changed at each row is in bold." }
+						{ level_note }
+						if location == Location::Alchemy {
+							{ " Alchemy colours can't drop below 1." }
+						}
+						{ " Values marked † aren't confirmed: that level isn't in the data yet, so the default is shown." }
+					</p>
+				</section>
+				<div class="card-guide">
+					{ for info::guide_order(&self.facilities, location).into_iter().map(|kind| self.view_card_info(&facility, kind)) }
+				</div>
+			</>
+		}
+	}
+
+	fn view_card_info(&self, facility: &Facility, kind: CardKind) -> Html {
+		let steps = info::progression(&self.facilities, kind);
+		let max_level = info::max_level(&self.facilities, &self.tables, kind);
+		let values = info::values(&self.tables, kind, max_level);
+		let used = facility.cap(&self.facilities, self.location, kind).apply(facility.owned(kind));
+		let yours = (used.limit > 0).then_some(used.level);
+		let heading_id = format!("card-{}", images::file_stem(kind.name()));
+		let unlock_text = match info::unlock_level(&steps) {
+			Some(level) => format!("Unlocks at facility level {level}"),
+			None => "Unlock level unknown".into(),
+		};
+
+		// One row per facility level where the card unlocks, levels up or gains
+		// copies. Without facility data, one row per card level.
+		let rows: Vec<(Option<info::Step>, &info::Row)> = if steps.is_empty() {
+			values.rows.iter().map(|row| (None, row)).collect()
+		} else {
+			steps
+				.iter()
+				.filter(|step| step.card_level > 0)
+				.filter_map(|step| Some((Some(*step), values.rows.get(usize::from(step.card_level) - 1)?)))
+				.collect()
+		};
+		// The row in effect at the player's facility level
+		let current = facility.level.and_then(|have| {
+			rows.iter().rposition(|(step, _)| step.is_some_and(|step| step.facility_level <= have))
+		});
+
+		html! {
+			<section class="panel card-info" aria-labelledby={heading_id.clone()}>
+				<div class="card-info-header">
+					{ image(images::card(kind), "card-info-image") }
+					<div class="card-info-title">
+						<h2 id={heading_id}>{ kind.name() }</h2>
+						<span class="card-info-unlock">{ unlock_text }</span>
+					</div>
+					if let Some(level) = yours {
+						<span class="chip card-info-yours">{ format!("Yours: Lv {level}") }</span>
+					}
+				</div>
+				<p class="card-info-description">{ info::description(kind) }</p>
+				<div class="table-wrap">
+					<table class="card-values">
+						<thead>
+							<tr>
+								<th scope="col">{ "Facility level" }</th>
+								<th scope="col">{ "Card level" }</th>
+								<th scope="col">{ "Copies" }</th>
+								{ for values.columns.iter().map(|column| html! { <th scope="col">{ *column }</th> }) }
+							</tr>
+						</thead>
+						<tbody>
+							{ for rows.iter().enumerate().map(|(i, &(step, row))| {
+								let previous = i.checked_sub(1).and_then(|prev| rows[prev].0);
+								let level_changed = previous.is_none_or(|prev| step.is_none_or(|step| step.card_level != prev.card_level));
+								let copies_changed = previous.is_none_or(|prev| step.is_none_or(|step| step.limit != prev.limit));
+								let reached = match (facility.level, step) {
+									(Some(have), Some(step)) => step.facility_level <= have,
+									_ => true,
+								};
+								let is_current = current == Some(i);
+								let dash = || "—".to_string();
+								html! {
+									<tr
+										class={classes!(is_current.then_some("current"), (!reached).then_some("unreached"))}
+										aria-current={is_current.then_some("true")}
+									>
+										<th scope="row">{ step.map_or_else(dash, |step| step.facility_level.to_string()) }</th>
+										<td class={classes!(level_changed.then_some("changed"))}>{ format!("Lv {}", row.level) }</td>
+										<td class={classes!(copies_changed.then_some("changed"))}>
+											{ step.map_or_else(dash, |step| step.limit.to_string()) }
+										</td>
+										{ for row.cells.iter().map(|cell| html! {
+											<td class={classes!((!row.listed).then_some("unconfirmed"))}>
+												{ cell }
+												if !row.listed {
+													<span class="dagger" title="Not in the data yet: shows the default value">{ "†" }</span>
+												}
+											</td>
+										}) }
+									</tr>
+								}
+							}) }
+						</tbody>
+					</table>
+				</div>
+			</section>
+		}
+	}
+}
+
 fn percent(share: f64) -> String {
 	if share > 0.0 && share < 1.0 {
 		"<1%".to_string()

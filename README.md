@@ -24,7 +24,7 @@ A big thanks to [@MatsuTaku](https://github.com/MatsuTaku) as they had a lot of 
 
 The web front end is built with [Yew](https://yew.rs) and [Trunk](https://trunkrs.dev). It runs entirely in your browser:
 
-- A sidebar on the left with the two pages: **Deck builder**, which the app opens on, and **Best decks**. The current page is highlighted, and its name heads the page. On narrow screens the pages become a bar across the top.
+- A sidebar on the left with the three pages: **Deck builder**, which the app opens on, **Best decks** and **Cards**. The current page is highlighted, and its name heads the page. On narrow screens the pages become a bar across the top.
 - A tab for each location (Kitchen, Forge, Alchemy) at the top of the page.
 - A **Facility level** selector. Cards are capped to what that level allows: capped values are flagged (for example "Level → 4"), cards that aren't unlocked yet are greyed out, and **Use level maximums** sets every card to the highest it can be. Recipes the level hasn't unlocked are left out of the recipe selector and **All**.
 - The location's cards, each with a **Level** and **Limit** box. A limit of 0 leaves the card out. Edits are saved in your browser, and **Reset all locations to defaults** goes back to `data/inventory.ron`.
@@ -38,6 +38,11 @@ The web front end is built with [Yew](https://yew.rs) and [Trunk](https://trunkr
   - Random effects (Cut rolls, random colours, Heat Control retriggers and so on) make one craft of a play order just one sample of what it can score. To keep that noise about the same for every deck, the **Samples** setting (10,000 to 1,000,000, default 50,000) sets about how many crafts to score: every play order is scored the same number of times, and at least once. A deck with many play orders gets a roll or two of each; a deck of five identical cards has one play order, rolled 50,000 times. The status line shows the plan before scoring, such as "3,360 play orders × 15 rolls = 50,400 crafts". Lowest and highest are the extremes over every craft, so they spread wider with more samples. The setting is saved in your browser.
   - It also compares your deck with the best deck for the recipe: both averages, the difference, and the best deck's cards. Once the best deck is found, it's also scored with your **Samples** setting, so the averages compare like for like, and its star chances are drawn beside yours. The search itself scores each play order once; until the best deck has been sampled (or after changing the setting), **Sample** next to its average does it. If the calculator hasn't already found the best deck for your current cards, scoring a deck starts that search in the background (it can be stopped, and restarted with **Find best deck**).
   - The **Scoring history** column on the right lists every deck scored for the recipe, newest first: its cards, average, lowest and highest scores, chance of the top star, and how far it is from the best deck. It stays in view as you scroll, and moves below the builder on narrow screens. **Load** puts a deck back in the builder. Up to 50 decks per recipe are saved in your browser.
+
+- The **Cards** page, a guide to the location's cards, in the order they unlock. Where two unlock at the same facility level, a card that scores comes before one that only changes how other cards score. Each card has a section with:
+  - What it does: how it scores, or how it changes other cards.
+  - The facility level it unlocks at.
+  - A table with a row for each facility level where the card unlocks, levels up or allows more copies per deck: the card level, the copies, and the card's values at that level (points, charges, multipliers, debuffs and so on). What changed is in bold. With a facility level set, the rows it hasn't reached are faded and the row for your level is highlighted. Values marked † aren't in `data/cards.ron` yet, so they show the card's default.
 
 Decks are scored in [web workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API), one per CPU core, so the page stays responsive during long runs. Expect it to be slower than the command line, as WebAssembly is slower than native code.
 
@@ -231,6 +236,7 @@ Edit this file when a card's in-game numbers are confirmed or change.
 | [src/lib.rs](src/lib.rs) | The scoring library shared by the command line and the web app. |
 | [src/inventory.rs](src/inventory.rs) | The facility levels and owned cards in `inventory.ron`. |
 | [src/facility.rs](src/facility.rs) | The facility level caps in `facilities.ron`. |
+| [src/info.rs](src/info.rs) | The Cards page's data: card descriptions, unlock and upgrade levels, and values by level. |
 | [src/web/app.rs](src/web/app.rs) | The Yew page: location tabs, card inputs, recipe selector, results table and deck builder. |
 | [src/builder.rs](src/builder.rs) | The deck builder's slots, and the rules for adding, moving and removing cards. |
 | [src/web/worker.rs](src/web/worker.rs), [src/bin/worker.rs](src/bin/worker.rs) | The web worker that scores decks, for both the calculator and the deck builder. |
@@ -258,5 +264,4 @@ Run the tests with `cargo test`.
 - Update the command line version to display the same stat data as individual recipes show in the web
 - Verify and validate all cards based on in game scoring, some of the card's descriptions are a bit ambiguous to how they actually score, same for recipe powers.
 - Hovering over cards should display their abilities
-- Add a card section that shows information about the card including how it scores, the facility level it unlocks, and the limit at each facility level
-  - The same for recipes
+- Add a recipe section, like the Cards page, that shows information about each recipe

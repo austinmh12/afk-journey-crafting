@@ -1319,3 +1319,116 @@ main.wide {
 		height: 3px;
 	}
 }
+
+/* Card guide (Cards page) */
+.guide-hint {
+	margin-bottom: 0;
+}
+
+.card-guide {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr));
+	gap: 16px;
+	align-items: start;
+}
+
+.card-info {
+	display: grid;
+	gap: 12px;
+	min-width: 0;
+}
+
+.card-info-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.card-info-image {
+	width: 52px;
+	height: 52px;
+	border-radius: 6px;
+}
+
+.card-info-title {
+	display: grid;
+	gap: 2px;
+	flex: 1;
+	min-width: 0;
+}
+
+.card-info-unlock {
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+
+.card-info-yours {
+	align-self: start;
+	font-size: 0.8rem;
+	font-weight: 600;
+}
+
+.card-info-description {
+	margin: 0;
+	line-height: 1.45;
+}
+
+.card-values {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.card-values th,
+.card-values td {
+	text-align: left;
+	padding: 6px 8px;
+	border-top: 1px solid var(--border);
+	white-space: nowrap;
+}
+
+.card-values thead th {
+	border-top: 0;
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--muted);
+	white-space: normal;
+	vertical-align: bottom;
+}
+
+.card-values tbody th {
+	font-weight: 600;
+}
+
+.card-values tbody td:not(.changed):nth-child(-n + 3) {
+	color: var(--muted);
+}
+
+.card-values td.changed {
+	font-weight: 600;
+}
+
+.card-values tr.current {
+	background: var(--accent-soft);
+}
+
+.card-values tr.current th {
+	color: var(--accent);
+}
+
+.card-values tr.unreached {
+	color: var(--muted);
+	opacity: 0.7;
+}
+
+.card-values .unconfirmed {
+	color: var(--muted);
+}
+
+.dagger {
+	margin-left: 2px;
+	color: var(--star);
+	cursor: help;
+}
