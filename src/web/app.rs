@@ -973,10 +973,12 @@ impl App {
 							</span>
 						}) }
 					</p>
-					<p class={classes!("power", recipe.power().is_none().then_some("none"))}>
-						<span class="power-label">{ "Power" }</span>
-						{ recipe.power().unwrap_or("None known") }
-					</p>
+					if let Some(power) = recipe.power() {
+						<p class="power">
+							<span class="power-label">{ "Power" }</span>
+							{ power }
+						</p>
+					}
 				</div>
 			</div>
 		}
@@ -1170,16 +1172,30 @@ impl App {
 				if !recipe.stars.is_empty() {
 					<h4>{ "Chance of each star" }</h4>
 					<ul class="star-chances">
-						{ for stats.star_orders.iter().enumerate().map(|(i, &count)| {
+						{ for stats.star_counts().iter().zip(builder::tenths_of_percent(&stats.star_counts())).enumerate().map(|(stars, (&count, tenths))| {
 							let share = count as f64 / stats.orders.max(1) as f64 * 100.0;
+							// The score range that earns exactly this many stars
+							let range = match (stars.checked_sub(1).map(|i| recipe.stars[i]), recipe.stars.get(stars)) {
+								(None, Some(next)) => format!("under {next}"),
+								(Some(threshold), Some(next)) => format!("{threshold}–{}", next - 1),
+								(Some(threshold), None) => format!("{threshold}+"),
+								(None, None) => String::new(),
+							};
+							let shown = if count > 0 && tenths == 0 {
+								"<0.1%".to_string()
+							} else {
+								format!("{}.{}%", tenths / 10, tenths % 10)
+							};
 							html! {
 								<li>
-									<span class="stars">{ str::repeat("★", i + 1) }</span>
-									<span class="muted">{ format!("{}+", recipe.stars[i]) }</span>
+									<span class="stars" aria-label={format!("{stars} stars")}>
+										{ format!("{}{}", str::repeat("★", stars), str::repeat("☆", recipe.stars.len() - stars)) }
+									</span>
+									<span class="muted">{ range }</span>
 									<span class="meter" aria-hidden="true">
 										<span class="meter-fill" style={format!("width: {share:.1}%")}></span>
 									</span>
-									<span class="share">{ percent(share) }</span>
+									<span class="share">{ shown }</span>
 								</li>
 							}
 						}) }
@@ -1210,7 +1226,8 @@ impl App {
 					_ => "even",
 				};
 				let share = (best.average > 0).then(|| stats.average as f64 / best.average as f64 * 100.0);
-				let (take_out, put_in) = builder::card_difference(&stats.cards, &best.cards);
+				// Both are sorted
+				let is_best = stats.cards == best.cards;
 				html! {
 					<>
 						<div class="stat-grid compare-grid">
@@ -1232,7 +1249,7 @@ impl App {
 								</span>
 							</div>
 						</div>
-						if take_out.is_empty() && put_in.is_empty() {
+						if is_best {
 							<p class="compare-note">
 								{ "This is the best deck for your cards." }
 								if difference != 0 {
@@ -1244,14 +1261,6 @@ impl App {
 								<div class="swap">
 									<span class="swap-label">{ "Best deck" }</span>
 									{ view_cards(&best.cards) }
-								</div>
-								<div class="swap">
-									<span class="swap-label">{ "Take out" }</span>
-									{ view_cards(&take_out) }
-								</div>
-								<div class="swap">
-									<span class="swap-label">{ "Put in" }</span>
-									{ view_cards(&put_in) }
 								</div>
 							</div>
 						}

@@ -30,10 +30,10 @@ The web front end is built with [Yew](https://yew.rs) and [Trunk](https://trunkr
 - A **Recipe** selector. **All** (the default) runs every recipe at the location; or pick a single recipe. **Calculate** runs it.
 - A results table with one row per recipe: the recipe, with its average score and stars underneath, and the cards in its best deck.
 - A **Deck builder** page (switch at the top right) for scoring a deck of your own:
-  - Pick a recipe from the location to see its image, card count, star thresholds and power.
+  - Pick a recipe from the location to see its image, card count, star thresholds and power, if it has one.
   - Drag cards from the location's available cards into the deck's empty slots, or click a card to fill the next slot. Each card shows how many copies are left. Drag cards between slots to swap them, and drag one back to the available cards, or click it, to take it out.
-  - Once every slot is filled, **Score deck** scores every distinct play order and shows the average, lowest and highest scores with their stars, how many play orders earn each star, and the highest- and lowest-scoring play orders.
-  - It also compares your deck with the best deck for the recipe: both averages, the difference, and which cards to take out and put in to match the best deck. If the calculator hasn't already found the best deck for your current cards, scoring a deck starts that search in the background (it can be stopped, and restarted with **Find best deck**).
+  - Once every slot is filled, **Score deck** scores every distinct play order and shows the average, lowest and highest scores with their stars, the share of play orders that earn exactly 0, 1, 2… stars (adding up to 100%), and the highest- and lowest-scoring play orders.
+  - It also compares your deck with the best deck for the recipe: both averages, the difference, and the best deck's cards. If the calculator hasn't already found the best deck for your current cards, scoring a deck starts that search in the background (it can be stopped, and restarted with **Find best deck**).
   - The **Scoring history** column on the right lists every deck scored for the recipe, newest first: its cards, average, lowest and highest scores, chance of the top star, and how far it is from the best deck. It stays in view as you scroll, and moves below the builder on narrow screens. **Load** puts a deck back in the builder. Up to 50 decks per recipe are saved in your browser.
 
 Decks are scored in [web workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API), one per CPU core, so the page stays responsive during long runs. Expect it to be slower than the command line, as WebAssembly is slower than native code.

@@ -49,24 +49,24 @@ pub fn limit(available: &[(Card, usize)], kind: CardKind) -> usize {
 	available.iter().find(|(card, _)| card.kind == kind).map_or(0, |&(_, limit)| limit)
 }
 
-/// The cards only in `deck` and the cards only in `other`, counting copies, for
-/// two sorted decks: what to take out of `deck` and put in to make it `other`.
-pub fn card_difference(deck: &[Card], other: &[Card]) -> (Vec<Card>, Vec<Card>) {
-	let (mut out, mut put_in) = (Vec::new(), Vec::new());
-	let (mut a, mut b) = (deck.iter().peekable(), other.iter().peekable());
-	loop {
-		match (a.peek(), b.peek()) {
-			(Some(x), Some(y)) if x == y => {
-				a.next();
-				b.next();
-			}
-			(Some(x), Some(y)) if x < y => out.extend(a.next()),
-			(Some(_), Some(_)) => put_in.extend(b.next()),
-			(Some(_), None) => out.extend(a.next()),
-			(None, Some(_)) => put_in.extend(b.next()),
-			(None, None) => return (out, put_in),
-		}
+/// Each count's share of the total in tenths of a percent, rounded so the shares
+/// add up to exactly 100%: the largest remainders round up. All zeros when the
+/// counts are.
+pub fn tenths_of_percent(counts: &[u64]) -> Vec<u64> {
+	let total: u64 = counts.iter().sum();
+	if total == 0 {
+		return vec![0; counts.len()];
 	}
+	let exact: Vec<(u64, u64)> = counts.iter().map(|&count| ((count * 1000) / total, (count * 1000) % total)).collect();
+	let mut shares: Vec<u64> = exact.iter().map(|&(share, _)| share).collect();
+	let short = 1000 - shares.iter().sum::<u64>();
+	let mut by_remainder: Vec<usize> = (0..counts.len()).collect();
+	// Largest remainder first; ties go to the earlier count
+	by_remainder.sort_by_key(|&i| std::cmp::Reverse(exact[i].1));
+	for &i in by_remainder.iter().take(short as usize) {
+		shares[i] += 1;
+	}
+	shares
 }
 
 /// Adds a scored deck to the front of a recipe's history, newest first. A deck
@@ -287,14 +287,16 @@ mod tests {
 	}
 
 	#[test]
-	fn differences_count_copies() {
-		let card = |kind, level| Card { kind, level };
-		let deck = [card(Cut, 4), card(Cut, 4), card(Season, 1)];
-		let best = [card(Cut, 4), card(Season, 1), card(Season, 1), card(Bake, 1)];
-		let (out, put_in) = card_difference(&deck, &best);
-		assert_eq!(out, vec![card(Cut, 4)]);
-		assert_eq!(put_in, vec![card(Season, 1), card(Bake, 1)]);
-		assert_eq!(card_difference(&deck, &deck), (vec![], vec![]));
+	fn percentages_add_up_to_100() {
+		// Thirds: 33.3% each, and the leftover 0.1% goes to the first
+		assert_eq!(tenths_of_percent(&[1, 1, 1]), vec![334, 333, 333]);
+		assert_eq!(tenths_of_percent(&[0, 3, 1]), vec![0, 750, 250]);
+		// 2/3 has the larger remainder, so it rounds up
+		assert_eq!(tenths_of_percent(&[1, 2]), vec![333, 667]);
+		assert_eq!(tenths_of_percent(&[0, 0]), vec![0, 0]);
+		for counts in [vec![7, 13, 1, 40319], vec![1; 7], vec![5, 0, 9, 2, 11]] {
+			assert_eq!(tenths_of_percent(&counts).iter().sum::<u64>(), 1000, "{counts:?}");
+		}
 	}
 
 	#[test]

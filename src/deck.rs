@@ -148,6 +148,21 @@ pub struct DeckStats {
 	pub star_orders: Vec<u64>,
 }
 
+impl DeckStats {
+	/// How many play orders earned exactly 0, 1, 2… stars, up to every star, so
+	/// they add up to [`Self::orders`].
+	pub fn star_counts(&self) -> Vec<u64> {
+		// `star_orders` counts orders that earned at least each star
+		let at_least = |stars: usize| match stars {
+			0 => self.orders,
+			_ => self.star_orders.get(stars - 1).copied().unwrap_or(0),
+		};
+		(0..=self.star_orders.len())
+			.map(|stars| at_least(stars).saturating_sub(at_least(stars + 1)))
+			.collect()
+	}
+}
+
 /// Scores every distinct play order of `cards`, which must be sorted to start
 /// from the first order, and calls `f` with each order and its score.
 fn for_each_order<R: Rng + ?Sized>(
@@ -541,6 +556,8 @@ mod tests {
 		assert_eq!(stats.maximum.order, vec![card(Reforge), card(Banquet), card(Reforge)]);
 		assert_eq!(stats.maximum.total(), 256);
 		assert_eq!(stats.star_orders, vec![3, 2, 0]);
+		// Exactly 0, 1, 2 and 3 stars: one order at 121 (1 star), two at 256 (2 stars)
+		assert_eq!(stats.star_counts(), vec![0, 1, 2, 0]);
 		// Matches the calculator's scoring of the same deck
 		let sorted = Deck { cards: stats.cards.clone() };
 		assert_eq!(sorted.score(&recipe, &tables(), &mut rand::rng()).average(), stats.average);

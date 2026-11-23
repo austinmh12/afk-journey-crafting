@@ -547,10 +547,6 @@ input:disabled {
 	color: var(--accent);
 }
 
-.power.none {
-	color: var(--muted);
-}
-
 /* Images inside draggable cards: the card is dragged, not the picture */
 .builder-card img,
 .slot-card img {
