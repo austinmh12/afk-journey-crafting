@@ -846,18 +846,6 @@ input:disabled {
 	}
 }
 
-/* ---------- Deck builder tabs ---------- */
-
-.builder-tabs {
-	margin-top: 14px;
-	border-bottom: 1px solid var(--border);
-}
-
-.builder-tabs .tab {
-	padding: 6px 12px 8px;
-	margin-bottom: -1px;
-}
-
 /* ---------- Comparison with the best deck ---------- */
 
 .comparison {
@@ -901,51 +889,156 @@ input:disabled {
 	letter-spacing: 0.04em;
 }
 
-/* ---------- History ---------- */
+/* ---------- Builder layout: the builder on the left, its history on the right ---------- */
 
-.history-empty {
-	margin-top: 14px;
+.app-header.wide > *,
+main.wide {
+	max-width: 1440px;
+}
+
+.builder-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+	gap: 16px;
+	align-items: start;
+}
+
+.builder-main {
+	display: grid;
+	gap: 16px;
+	min-width: 0;
+}
+
+/* Stays in view below the sticky header while the builder scrolls */
+.history {
+	position: sticky;
+	top: var(--header-height, 120px);
+	max-height: calc(100vh - var(--header-height, 120px) - 16px);
+	overflow-y: auto;
+	overscroll-behavior: contain;
 }
 
 .history-header {
 	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
+	align-items: flex-start;
 	justify-content: space-between;
 	gap: 8px;
-	margin-top: 10px;
 }
 
 .history-header .hint {
-	margin: 0;
+	margin: 4px 0 0;
 }
 
-.history-table th.number,
-.history-table td.number {
-	text-align: right;
-	white-space: nowrap;
-	font-variant-numeric: tabular-nums;
+.history-empty {
+	margin: 12px 0 0;
 }
 
-.history-table tbody td {
-	vertical-align: top;
+.history-list {
+	list-style: none;
+	margin: 12px 0 0;
+	padding: 0;
+	display: grid;
+	gap: 8px;
 }
 
-.history-table tr.current td {
+.history-entry {
+	display: grid;
+	gap: 8px;
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+.history-entry.current {
+	border-color: var(--accent);
 	background: var(--accent-soft);
 }
 
-.history-table .strong {
+.history-score {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 8px;
+}
+
+.history-average {
+	font-size: 1.25rem;
 	font-weight: 700;
+	font-variant-numeric: tabular-nums;
 }
 
-.history-table .actions {
-	white-space: nowrap;
-	text-align: right;
+.history-diff {
+	margin-left: auto;
+	font-size: 0.85rem;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
 }
 
-.history-table .actions .button + .button {
-	margin-left: 4px;
+.history-diff.even {
+	color: var(--muted);
+}
+
+.history-figures {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 16px;
+	margin: 0;
+	font-size: 0.85rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.history-figures div {
+	display: flex;
+	gap: 4px;
+}
+
+.history-figures dt {
+	color: var(--muted);
+}
+
+.history-figures dd {
+	margin: 0;
+	font-weight: 600;
+}
+
+.history-entry .deck {
+	gap: 4px;
+}
+
+.history-entry .chip {
+	font-size: 0.85rem;
+	padding: 2px 8px;
+}
+
+.history-footer {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+}
+
+.history-footer .tags {
+	margin-top: 0;
+}
+
+.history-actions {
+	display: flex;
+	gap: 4px;
+	margin-left: auto;
+}
+
+/* Too narrow for two columns: the history goes below the builder */
+@media (max-width: 900px) {
+	.builder-layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.history {
+		position: static;
+		max-height: none;
+		overflow: visible;
+	}
 }
 
 .tags {
@@ -970,15 +1063,6 @@ input:disabled {
 
 .tag.muted {
 	color: var(--muted);
-}
-
-.visually-hidden {
-	position: absolute;
-	width: 1px;
-	height: 1px;
-	overflow: hidden;
-	clip-path: inset(50%);
-	white-space: nowrap;
 }
 
 @media (max-width: 480px) {

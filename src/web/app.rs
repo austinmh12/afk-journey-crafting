@@ -82,7 +82,6 @@ pub enum Msg {
 		worker: usize,
 		done: JobDone,
 	},
-	SetBuilderTab(BuilderTab),
 	/// Puts a deck from the recipe's history back in the deck builder.
 	LoadDeck(usize),
 	RemoveHistory(usize),
@@ -104,13 +103,6 @@ struct Search {
 	run: Run,
 	jobs_left: usize,
 	best: Option<BestDeck>,
-}
-
-/// The deck builder's tabs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BuilderTab {
-	Deck,
-	History,
 }
 
 /// The result for one recipe, filled in as its jobs finish.
@@ -219,7 +211,6 @@ pub struct App {
 	search: Option<Search>,
 	/// Increases with every search, so results from a stopped search are ignored.
 	search_id: u32,
-	builder_tab: BuilderTab,
 	/// The decks scored in the deck builder, newest first, by recipe name.
 	history: BTreeMap<String, Vec<DeckStats>>,
 }
@@ -246,7 +237,6 @@ impl Component for App {
 			best_decks: BTreeMap::new(),
 			search: None,
 			search_id: 0,
-			builder_tab: BuilderTab::Deck,
 			history: load_history(),
 		}
 	}
@@ -360,7 +350,6 @@ impl Component for App {
 				}
 				self.search_job_done(worker, done);
 			}
-			Msg::SetBuilderTab(tab) => self.builder_tab = tab,
 			Msg::LoadDeck(index) => {
 				let Some(recipe) = self.builder().recipe else { return false };
 				let Some(entry) = self.history_for(recipe).get(index).cloned() else { return false };
@@ -375,7 +364,6 @@ impl Component for App {
 						result: Some(entry),
 					});
 				}
-				self.builder_tab = BuilderTab::Deck;
 			}
 			Msg::RemoveHistory(index) => {
 				let Some(recipe) = self.builder().recipe else { return false };
@@ -399,7 +387,7 @@ impl Component for App {
 		let link = ctx.link();
 		html! {
 			<>
-				<header class="app-header">
+				<header class={classes!("app-header", (self.view == View::Builder).then_some("wide"))}>
 					<div class="header-row">
 						<h1>{ "Homestead Crafting Calculator" }</h1>
 						<div class="view-switch" role="group" aria-label="Page">
@@ -434,10 +422,15 @@ impl Component for App {
 						}) }
 					</nav>
 				</header>
-				<main>
+				<main class={classes!((self.view == View::Builder).then_some("wide"))}>
 					if self.view == View::Builder {
-						{ self.view_builder(ctx) }
-						{ self.view_inventory(ctx) }
+						<div class="builder-layout">
+							<div class="builder-main">
+								{ self.view_builder(ctx) }
+								{ self.view_inventory(ctx) }
+							</div>
+							{ self.view_history(link) }
+						</div>
 					} else {
 						{ self.view_inventory(ctx) }
 						{ self.view_controls(ctx) }
@@ -957,29 +950,7 @@ impl App {
 				</label>
 				if let Some(recipe) = builder.recipe {
 					{ self.view_builder_recipe(recipe) }
-					<nav class="tabs builder-tabs" role="tablist" aria-label="Deck builder">
-						{ for [
-							(BuilderTab::Deck, "Deck".to_string()),
-							(BuilderTab::History, format!("History ({})", self.history_for(recipe).len())),
-						].into_iter().map(|(tab, label)| {
-							let active = tab == self.builder_tab;
-							html! {
-								<button
-									role="tab"
-									aria-selected={active.to_string()}
-									class={classes!("tab", active.then_some("active"))}
-									onclick={ctx.link().callback(move |_| Msg::SetBuilderTab(tab))}
-								>
-									{ label }
-								</button>
-							}
-						}) }
-					</nav>
-					if self.builder_tab == BuilderTab::Deck {
-						{ self.view_builder_deck(ctx, builder, recipe) }
-					} else {
-						{ self.view_history(ctx.link(), builder, recipe) }
-					}
+					{ self.view_builder_deck(ctx, builder, recipe) }
 				}
 			</section>
 		}
@@ -1319,18 +1290,20 @@ impl App {
 		}
 	}
 
-	/// A summary of every deck scored for the recipe, newest first.
-	fn view_history(&self, link: &Scope<Self>, builder: &Builder, recipe_index: usize) -> Html {
+	/// The column beside the deck builder summarising every deck scored for its
+	/// recipe, newest first.
+	fn view_history(&self, link: &Scope<Self>) -> Html {
+		let builder = self.builder();
+		let Some(recipe_index) = builder.recipe else {
+			return html! {
+				<aside class="panel history" aria-labelledby="history-heading">
+					<h2 id="history-heading">{ "Scoring history" }</h2>
+					<p class="hint history-empty">{ "Pick a recipe to see the decks you've scored for it." }</p>
+				</aside>
+			};
+		};
 		let recipe = &self.recipes[recipe_index];
 		let entries = self.history_for(recipe_index);
-		if entries.is_empty() {
-			return html! {
-				<p class="hint history-empty">
-					{ format!("Decks you score for {} are listed here, so you can compare them.", recipe.name) }
-				</p>
-			};
-		}
-
 		let available = self.available();
 		let current = builder.deck(&available);
 		let best = self.known_best(recipe_index).and_then(|known| known.best.as_ref());
@@ -1338,105 +1311,99 @@ impl App {
 		let top_star = recipe.stars.len();
 
 		html! {
-			<div class="history">
+			<aside class="panel history" aria-labelledby="history-heading">
 				<div class="history-header">
-					<p class="hint">
-						{ format!(
-							"{} {} scored, newest first. Saved in this browser.",
-							entries.len(),
-							if entries.len() == 1 { "deck" } else { "decks" },
-						) }
+					<div>
+						<h2 id="history-heading">{ "Scoring history" }</h2>
+						<p class="hint">
+							{ format!(
+								"{}: {} {} scored, newest first.",
+								recipe.name,
+								entries.len(),
+								if entries.len() == 1 { "deck" } else { "decks" },
+							) }
+						</p>
+					</div>
+					if !entries.is_empty() {
+						<button class="button subtle" onclick={link.callback(|_| Msg::ClearHistory)}>{ "Clear" }</button>
+					}
+				</div>
+				if entries.is_empty() {
+					<p class="hint history-empty">
+						{ "Decks you score for this recipe are listed here, so you can compare them. They're saved in this browser." }
 					</p>
-					<button class="button subtle" onclick={link.callback(|_| Msg::ClearHistory)}>{ "Clear history" }</button>
-				</div>
-				<div class="table-wrap">
-					<table class="results history-table">
-						<thead>
-							<tr>
-								<th scope="col">{ "Deck" }</th>
-								<th scope="col" class="number">{ "Average" }</th>
-								<th scope="col" class="number">{ "Lowest" }</th>
-								<th scope="col" class="number">{ "Highest" }</th>
-								if top_star > 0 {
-									<th scope="col" class="number">{ format!("{top_star}★ chance") }</th>
-								}
-								<th scope="col" class="number">{ "vs best" }</th>
-								<th scope="col"><span class="visually-hidden">{ "Actions" }</span></th>
-							</tr>
-						</thead>
-						<tbody>
-							{ for entries.iter().enumerate().map(|(i, entry)| {
-								let is_current = current.as_ref() == Some(&entry.cards);
-								let is_top = top == Some(entry.average);
-								// Scored with card levels that have changed since
-								let outdated = entry.cards.iter().any(|card| {
-									available.iter().find(|(owned, _)| owned.kind == card.kind).map(|(owned, _)| owned.level)
-										!= Some(card.level)
-								});
-								let top_share = entry.star_orders.last().map(|&count| {
-									percent(count as f64 / entry.orders.max(1) as f64 * 100.0)
-								});
-								html! {
-									<tr class={classes!(is_current.then_some("current"))}>
-										<td>
-											{ view_cards(&entry.cards) }
-											<div class="tags">
-												if is_current {
-													<span class="tag">{ "In the builder" }</span>
-												}
-												if is_top {
-													<span class="tag good">{ "Highest average" }</span>
-												}
-												if outdated {
-													<span class="tag muted" title="Some card levels have changed since this deck was scored">
-														{ "Older card levels" }
-													</span>
-												}
-											</div>
-										</td>
-										<td class="number">
-											<div class="strong">{ entry.average }</div>
-											{ view_stars(recipe, entry.average) }
-										</td>
-										<td class="number">{ entry.minimum.total() }</td>
-										<td class="number">{ entry.maximum.total() }</td>
-										if top_star > 0 {
-											<td class="number">{ top_share.unwrap_or_default() }</td>
+				}
+				<ol class="history-list">
+					{ for entries.iter().enumerate().map(|(i, entry)| {
+						let is_current = current.as_ref() == Some(&entry.cards);
+						let is_top = top == Some(entry.average);
+						// Scored with card levels that have changed since
+						let outdated = entry.cards.iter().any(|card| {
+							available.iter().find(|(owned, _)| owned.kind == card.kind).map(|(owned, _)| owned.level)
+								!= Some(card.level)
+						});
+						let top_share = entry.star_orders.last().map(|&count| {
+							percent(count as f64 / entry.orders.max(1) as f64 * 100.0)
+						});
+						html! {
+							<li class={classes!("history-entry", is_current.then_some("current"))}>
+								<div class="history-score">
+									<span class="history-average">{ entry.average }</span>
+									{ view_stars(recipe, entry.average) }
+									if let Some(best) = best {
+										<span
+											class={classes!("history-diff", match (entry.average - best.average).signum() {
+												-1 => "behind",
+												1 => "ahead",
+												_ => "even",
+											})}
+											title={format!("Compared with the best deck's average of {}", best.average)}
+										>
+											{ format!("{:+} vs best", entry.average - best.average) }
+										</span>
+									}
+								</div>
+								<dl class="history-figures">
+									<div><dt>{ "Low" }</dt><dd>{ entry.minimum.total() }</dd></div>
+									<div><dt>{ "High" }</dt><dd>{ entry.maximum.total() }</dd></div>
+									if let (true, Some(share)) = (top_star > 0, top_share) {
+										<div><dt>{ format!("{top_star}★") }</dt><dd>{ share }</dd></div>
+									}
+								</dl>
+								{ view_cards(&entry.cards) }
+								<div class="history-footer">
+									<div class="tags">
+										if is_current {
+											<span class="tag">{ "In the builder" }</span>
 										}
-										<td class="number">
-											{ match best {
-												Some(best) => html! {
-													<span class={classes!(match (entry.average - best.average).signum() {
-														-1 => "behind",
-														1 => "ahead",
-														_ => "even",
-													})}>
-														{ format!("{:+}", entry.average - best.average) }
-													</span>
-												},
-												None => html! { <span class="muted" title="The best deck for your current cards hasn't been found yet">{ "–" }</span> },
-											} }
-										</td>
-										<td class="actions">
-											<button class="button subtle" onclick={link.callback(move |_| Msg::LoadDeck(i))}>
-												{ "Load" }
-											</button>
-											<button
-												class="button subtle"
-												aria-label="Remove from history"
-												title="Remove from history"
-												onclick={link.callback(move |_| Msg::RemoveHistory(i))}
-											>
-												{ "✕" }
-											</button>
-										</td>
-									</tr>
-								}
-							}) }
-						</tbody>
-					</table>
-				</div>
-			</div>
+										if is_top {
+											<span class="tag good">{ "Highest average" }</span>
+										}
+										if outdated {
+											<span class="tag muted" title="Some card levels have changed since this deck was scored">
+												{ "Older card levels" }
+											</span>
+										}
+									</div>
+									<div class="history-actions">
+										<button class="button subtle" onclick={link.callback(move |_| Msg::LoadDeck(i))}>
+											{ "Load" }
+										</button>
+										<button
+											class="button subtle"
+											aria-label="Remove from history"
+											title="Remove from history"
+											onclick={link.callback(move |_| Msg::RemoveHistory(i))}
+										>
+											{ "✕" }
+										</button>
+									</div>
+								</div>
+							</li>
+						}
+					}) }
+				</ol>
+			</aside>
 		}
 	}
 }
