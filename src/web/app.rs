@@ -64,10 +64,11 @@ pub enum Msg {
 	SelectRecipe(Option<usize>),
 	Calculate,
 	Cancel,
-	JobDone {
+	/// A calculator run's worker finished a search job or sampled a best deck.
+	RunResponse {
 		run: u32,
 		worker: usize,
-		done: JobDone,
+		response: Response,
 	},
 	/// `None` clears the deck builder's recipe.
 	BuilderRecipe(Option<usize>),
@@ -138,6 +139,19 @@ struct RecipeResult {
 	recipe: usize,
 	jobs_left: usize,
 	best: Option<BestDeck>,
+	/// The samples setting the best deck is scored with once it's found.
+	samples: u64,
+	/// The best deck scored like the deck builder's decks, once that's done.
+	stats: Option<DeckStats>,
+	/// Whether the best deck is being scored.
+	sampling: bool,
+}
+
+impl RecipeResult {
+	/// Whether the search and the scoring of the best deck are both done.
+	fn done(&self) -> bool {
+		self.jobs_left == 0 && !self.sampling
+	}
 }
 
 /// The workers and queued jobs of a best deck search in progress.
@@ -147,19 +161,20 @@ struct Run {
 	cards: Vec<(Card, usize)>,
 	workers: Vec<WorkerBridge<CraftWorker>>,
 	idle: Vec<usize>,
-	queue: VecDeque<Job>,
+	/// Search jobs, and best decks to score.
+	queue: VecDeque<Request>,
 }
 
 impl Run {
 	/// Spawns one worker per CPU core and starts finding the best deck for each of
-	/// `recipes`, split into one job per worker. `on_done` makes the message for a
-	/// finished job, from the worker's number and its result.
+	/// `recipes`, split into one job per worker. `on_done` makes the message, if
+	/// any, for a worker's response, from the worker's number and the response.
 	fn start(
 		link: &Scope<App>,
 		location: Location,
 		cards: Vec<(Card, usize)>,
 		recipes: &[usize],
-		on_done: impl Fn(usize, JobDone) -> Msg + Clone + 'static,
+		on_done: impl Fn(usize, Response) -> Option<Msg> + Clone + 'static,
 	) -> Self {
 		let parts = worker_count();
 		let workers = (0..parts)
@@ -168,8 +183,8 @@ impl Run {
 				let on_done = on_done.clone();
 				CraftWorker::spawner()
 					.callback(move |response| {
-						if let Response::Best(done) = response {
-							link.send_message(on_done(worker, done));
+						if let Some(msg) = on_done(worker, response) {
+							link.send_message(msg);
 						}
 					})
 					.spawn(WORKER_PATH)
@@ -179,11 +194,13 @@ impl Run {
 			.iter()
 			.flat_map(|&recipe| {
 				let cards = &cards;
-				(0..parts).map(move |part| Job {
-					recipe,
-					cards: cards.clone(),
-					part,
-					parts,
+				(0..parts).map(move |part| {
+					Request::Best(Job {
+						recipe,
+						cards: cards.clone(),
+						part,
+						parts,
+					})
 				})
 			})
 			.collect();
@@ -206,9 +223,9 @@ impl Run {
 	/// Hands queued jobs to idle workers.
 	fn dispatch(&mut self) {
 		while let Some(&worker) = self.idle.last() {
-			let Some(job) = self.queue.pop_front() else { break };
+			let Some(request) = self.queue.pop_front() else { break };
 			self.idle.pop();
-			self.workers[worker].send(Request::Best(job));
+			self.workers[worker].send(request);
 		}
 	}
 }
@@ -329,11 +346,11 @@ impl Component for App {
 				self.run = None;
 				self.run_id += 1;
 			}
-			Msg::JobDone { run, worker, done } => {
+			Msg::RunResponse { run, worker, response } => {
 				if run != self.run_id {
 					return false;
 				}
-				self.job_done(worker, done);
+				self.run_response(worker, response);
 			}
 			Msg::BuilderRecipe(recipe) => {
 				let size = recipe.map_or(0, |recipe| self.recipes[recipe].cards);
@@ -698,8 +715,11 @@ impl App {
 		}
 		self.search_id += 1;
 		let search_id = self.search_id;
-		let run = Run::start(ctx.link(), self.location, self.available(), &[recipe], move |worker, done| {
-			Msg::SearchJobDone { search: search_id, worker, done }
+		let run = Run::start(ctx.link(), self.location, self.available(), &[recipe], move |worker, response| {
+			match response {
+				Response::Best(done) => Some(Msg::SearchJobDone { search: search_id, worker, done }),
+				Response::Stats(_) => None,
+			}
 		});
 		self.search = Some(Search {
 			recipe,
@@ -746,8 +766,8 @@ impl App {
 		};
 		self.run_id += 1;
 		let run_id = self.run_id;
-		let run = Run::start(ctx.link(), self.location, self.available(), &recipes, move |worker, done| {
-			Msg::JobDone { run: run_id, worker, done }
+		let run = Run::start(ctx.link(), self.location, self.available(), &recipes, move |worker, response| {
+			Some(Msg::RunResponse { run: run_id, worker, response })
 		});
 		self.results.insert(
 			self.location,
@@ -757,34 +777,73 @@ impl App {
 					recipe,
 					jobs_left: run.parts(),
 					best: None,
+					samples: self.samples,
+					stats: None,
+					sampling: false,
 				})
 				.collect(),
 		);
 		self.run = Some(run);
 	}
 
-	fn job_done(&mut self, worker: usize, done: JobDone) {
+	fn run_response(&mut self, worker: usize, response: Response) {
 		let Some(run) = &mut self.run else { return };
 		let rows = self.results.entry(run.location).or_default();
-		if let Some(row) = rows.iter_mut().find(|row| row.recipe == done.recipe) {
-			row.jobs_left = row.jobs_left.saturating_sub(1);
-			if let Some(best) = done.best
-				&& row.best.as_ref().is_none_or(|current| best.beats(current))
-			{
-				row.best = Some(best);
+		match response {
+			Response::Best(done) => {
+				if let Some(row) = rows.iter_mut().find(|row| row.recipe == done.recipe) {
+					row.jobs_left = row.jobs_left.saturating_sub(1);
+					if let Some(best) = done.best
+						&& row.best.as_ref().is_none_or(|current| best.beats(current))
+					{
+						row.best = Some(best);
+					}
+					if row.jobs_left == 0 {
+						// Lets the deck builder compare against it
+						self.best_decks.insert(row.recipe, KnownBest {
+							cards: run.cards.clone(),
+							best: row.best.clone(),
+						});
+						if let Some(best) = &row.best {
+							// Score the best deck like the deck builder does: the builder
+							// may already have, otherwise it's next in line
+							let sampled = self
+								.best_stats
+								.get(&row.recipe)
+								.filter(|stats| stats.cards == best.cards && stats.samples == row.samples)
+								.and_then(|stats| stats.result.clone());
+							if sampled.is_some() {
+								row.stats = sampled;
+							} else {
+								row.sampling = true;
+								run.queue.push_front(Request::Stats(StatsJob {
+									recipe: row.recipe,
+									cards: best.cards.clone(),
+									samples: row.samples,
+								}));
+							}
+						}
+					}
+				}
 			}
-			if row.jobs_left == 0 {
-				// Lets the deck builder compare against it
-				self.best_decks.insert(row.recipe, KnownBest {
-					cards: run.cards.clone(),
-					best: row.best.clone(),
-				});
+			Response::Stats(done) => {
+				if let Some(row) = rows.iter_mut().find(|row| row.recipe == done.recipe && row.sampling) {
+					row.sampling = false;
+					// Lets the deck builder use it too
+					self.best_stats.insert(row.recipe, BestStats {
+						cards: done.stats.cards.clone(),
+						samples: row.samples,
+						result: Some(done.stats.clone()),
+						from_builder: false,
+					});
+					row.stats = Some(done.stats);
+				}
 			}
 		}
 
 		run.idle.push(worker);
 		run.dispatch();
-		if rows.iter().all(|row| row.jobs_left == 0) {
+		if rows.iter().all(RecipeResult::done) {
 			// Dropping the run shuts its workers down
 			self.run = None;
 		}
@@ -953,6 +1012,7 @@ impl App {
 				} else {
 					<button class="button primary" onclick={link.callback(|_| Msg::Calculate)}>{ "Calculate" }</button>
 				}
+				{ self.view_samples(link, self.run.is_some()) }
 				{ match running_here {
 					Some(true) => html! { <span class="status">{ self.progress_text() }</span> },
 					Some(false) => html! {
@@ -974,7 +1034,7 @@ impl App {
 
 	fn progress_text(&self) -> String {
 		let rows = self.results.get(&self.location).map(Vec::as_slice).unwrap_or_default();
-		let done = rows.iter().filter(|row| row.jobs_left == 0).count();
+		let done = rows.iter().filter(|row| row.done()).count();
 		format!("Calculating… {done} of {} done", rows.len())
 	}
 
@@ -987,7 +1047,9 @@ impl App {
 		html! {
 			<section class="panel" aria-labelledby="results-heading">
 				<h2 id="results-heading">{ "Best decks" }</h2>
-				<p class="hint">{ "The deck with the highest average score over every play order. Card order is not a play order." }</p>
+				<p class="hint">
+					{ "The deck with the highest average score over every play order. Once found, it's scored again with the samples setting for a steadier average and its chance of each star. Card order is not a play order." }
+				</p>
 				<div class="table-wrap">
 					<table class="results">
 						<thead>
@@ -1004,20 +1066,40 @@ impl App {
 
 	fn view_row(&self, row: &RecipeResult, running: bool) -> Html {
 		let recipe = &self.recipes[row.recipe];
+		let best = row.best.as_ref().filter(|_| row.jobs_left == 0);
 		let cards = if row.jobs_left > 0 {
 			let text = if running { "Calculating…" } else { "Cancelled" };
 			html! { <span class="muted">{ text }</span> }
 		} else {
-			match &row.best {
-				Some(best) => view_cards(&best.cards),
+			match best {
+				Some(best) => html! {
+					<>
+						{ view_cards(&best.cards) }
+						if let Some(stats) = &row.stats {
+							{ view_star_distribution(recipe, stats) }
+							<div class="recipe-summary">
+								{ format!(
+									"Low {} · High {} · {} crafts",
+									stats.minimum.total(),
+									stats.maximum.total(),
+									group_digits(stats.crafts()),
+								) }
+							</div>
+						} else if row.sampling && running {
+							<div class="recipe-summary">{ "Scoring its chance of each star…" }</div>
+						}
+					</>
+				},
 				None => html! { <span class="muted">{ format!("Not enough cards: needs {}", recipe.cards) }</span> },
 			}
 		};
-		let summary = row.best.as_ref().filter(|_| row.jobs_left == 0).map(|best| {
+		// The sampled average once it's in, otherwise the search's
+		let summary = best.map(|best| {
+			let average = row.stats.as_ref().map_or(best.average, |stats| stats.average);
 			html! {
 				<div class="recipe-summary">
-					{ format!("Avg {} ", best.average) }
-					{ view_stars(recipe, best.average) }
+					{ format!("Avg {average} ") }
+					{ view_stars(recipe, average) }
 				</div>
 			}
 		});
@@ -1035,6 +1117,26 @@ impl App {
 				</th>
 				<td>{ cards }</td>
 			</tr>
+		}
+	}
+
+	/// The samples setting: about how many crafts to score per deck, for both the
+	/// best deck calculator and the deck builder.
+	fn view_samples(&self, link: &Scope<Self>, disabled: bool) -> Html {
+		html! {
+			<label class="samples" title="About how many crafts to score each deck with. Each play order is scored the same number of times, and at least once, so decks with fewer play orders get more rolls of each.">
+				<span>{ "Samples" }</span>
+				<select
+					{disabled}
+					onchange={link.batch_callback(|e: Event| {
+						e.target_unchecked_into::<HtmlSelectElement>().value().parse().ok().map(Msg::SetSamples)
+					})}
+				>
+					{ for SAMPLE_OPTIONS.iter().map(|&(samples, label)| html! {
+						<option value={samples.to_string()} selected={samples == self.samples}>{ label }</option>
+					}) }
+				</select>
+			</label>
 		}
 	}
 }
@@ -1177,19 +1279,7 @@ impl App {
 					<button class="button subtle" disabled={filled == 0} onclick={link.callback(|_| Msg::BuilderClear)}>
 						{ "Clear deck" }
 					</button>
-					<label class="samples" title="About how many crafts to score. Each play order is scored the same number of times, and at least once, so decks with fewer play orders get more rolls of each.">
-						<span>{ "Samples" }</span>
-						<select
-							disabled={scoring}
-							onchange={link.batch_callback(|e: Event| {
-								e.target_unchecked_into::<HtmlSelectElement>().value().parse().ok().map(Msg::SetSamples)
-							})}
-						>
-							{ for SAMPLE_OPTIONS.iter().map(|&(samples, label)| html! {
-								<option value={samples.to_string()} selected={samples == self.samples}>{ label }</option>
-							}) }
-						</select>
-					</label>
+					{ self.view_samples(link, scoring) }
 					<span class="status" aria-live="polite">{ status }</span>
 				</div>
 
@@ -1340,13 +1430,7 @@ impl App {
 					}
 					<ul class={classes!("star-chances", best.is_some().then_some("with-best"))}>
 						{ for star_shares(stats).into_iter().enumerate().map(|(stars, (share, shown))| {
-							// The score range that earns exactly this many stars
-							let range = match (stars.checked_sub(1).map(|i| recipe.stars[i]), recipe.stars.get(stars)) {
-								(None, Some(next)) => format!("under {next}"),
-								(Some(threshold), Some(next)) => format!("{threshold}–{}", next - 1),
-								(Some(threshold), None) => format!("{threshold}+"),
-								(None, None) => String::new(),
-							};
+							let range = star_range(recipe, stars);
 							let best_share = best_shares.as_ref().map(|shares| shares[stars].clone());
 							html! {
 								<li>
@@ -1787,6 +1871,59 @@ fn star_shares(stats: &DeckStats) -> Vec<(f64, String)> {
 			(count as f64 / total * 100.0, shown)
 		})
 		.collect()
+}
+
+/// A deck's chance of each star count as one bar, from 0 stars at the left to
+/// every star at the right, in one hue that darkens with each star, with a legend
+/// that gives every share as text.
+fn view_star_distribution(recipe: &Recipe, stats: &DeckStats) -> Html {
+	let shares = star_shares(stats);
+	let levels = shares.len().saturating_sub(1).max(1);
+	// More stars, more ink: a quarter of the star colour for 0 stars, up to all of it
+	let colour = |stars: usize| {
+		format!(
+			"background: color-mix(in srgb, var(--star) {}%, var(--surface-2))",
+			25 + 75 * stars / levels
+		)
+	};
+	let summary = shares
+		.iter()
+		.enumerate()
+		.map(|(stars, (_, shown))| format!("{stars} stars {shown}"))
+		.collect::<Vec<_>>()
+		.join(", ");
+
+	html! {
+		<div class="star-distribution">
+			<div class="star-bar" role="img" aria-label={format!("Chance of each star: {summary}")}>
+				{ for shares.iter().enumerate().filter(|(_, (share, _))| *share > 0.0).map(|(stars, (share, shown))| html! {
+					<span
+						class="star-segment"
+						style={format!("flex: {share:.3} 1 0; {}", colour(stars))}
+						title={format!("{stars}★ ({}): {shown} of crafts", star_range(recipe, stars))}
+					></span>
+				}) }
+			</div>
+			<ul class="star-bar-legend" aria-hidden="true">
+				{ for shares.iter().enumerate().map(|(stars, (_, shown))| html! {
+					<li>
+						<span class="swatch" style={colour(stars)}></span>
+						{ format!("{stars}★ {shown}") }
+					</li>
+				}) }
+			</ul>
+		</div>
+	}
+}
+
+/// The scores that earn exactly `stars` stars for `recipe`, e.g. "6600–13109".
+fn star_range(recipe: &Recipe, stars: usize) -> String {
+	match (stars.checked_sub(1).map(|i| recipe.stars[i]), recipe.stars.get(stars)) {
+		(None, Some(next)) => format!("under {next}"),
+		(Some(threshold), Some(next)) => format!("{threshold}–{}", next - 1),
+		(Some(threshold), None) => format!("{threshold}+"),
+		(None, None) => String::new(),
+	}
 }
 
 /// `n` with commas between groups of three digits, e.g. 1,000,000.

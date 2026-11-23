@@ -28,7 +28,8 @@ The web front end is built with [Yew](https://yew.rs) and [Trunk](https://trunkr
 - A **Facility level** selector. Cards are capped to what that level allows: capped values are flagged (for example "Level → 4"), cards that aren't unlocked yet are greyed out, and **Use level maximums** sets every card to the highest it can be. Recipes the level hasn't unlocked are left out of the recipe selector and **All**.
 - The location's cards, each with a **Level** and **Limit** box. A limit of 0 leaves the card out. Edits are saved in your browser, and **Reset all locations to defaults** goes back to `data/inventory.ron`.
 - A **Recipe** selector. **All** (the default) runs every recipe at the location; or pick a single recipe. **Calculate** runs it.
-- A results table with one row per recipe: the recipe, with its average score and stars underneath, and the cards in its best deck.
+- A **Samples** setting, shared with the deck builder (see below).
+- A results table with one row per recipe: the recipe, with its average score and stars underneath, and the cards in its best deck. Finding the best deck scores each play order of each deck once; once a recipe's best deck is found, it's scored again with the samples setting, and the row shows that steadier average, a bar with its chance of earning exactly 0, 1, 2… stars, and its lowest and highest scores seen.
 - A **Deck builder** page (switch at the top right) for scoring a deck of your own:
   - Pick a recipe from the location to see its image, card count, star thresholds and power, if it has one.
   - Drag cards from the location's available cards into the deck's empty slots, or click a card to fill the next slot. Each card shows how many copies are left. Drag cards between slots to swap them, and drag one back to the available cards, or click it, to take it out.
