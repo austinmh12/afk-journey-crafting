@@ -44,10 +44,65 @@ static EMPTY_BUILDER: Builder = Builder {
 /// The two pages of the app.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum View {
+	/// Builds a deck by hand and scores it. The page the app opens on.
+	Builder,
 	/// Finds the best deck for each recipe.
 	Calculator,
-	/// Builds a deck by hand and scores it.
-	Builder,
+}
+
+impl View {
+	/// In the order the sidebar lists them.
+	const ALL: [Self; 2] = [Self::Builder, Self::Calculator];
+
+	fn name(self) -> &'static str {
+		match self {
+			Self::Builder => "Deck builder",
+			Self::Calculator => "Best decks",
+		}
+	}
+
+	/// What the page is for, under its name in the sidebar.
+	fn blurb(self) -> &'static str {
+		match self {
+			Self::Builder => "Build and score your own deck",
+			Self::Calculator => "Find the best deck for each recipe",
+		}
+	}
+
+	/// A small line icon for the sidebar, drawn in the text colour.
+	fn icon(self) -> Html {
+		let paths = match self {
+			// Two overlapping cards
+			Self::Builder => html! {
+				<>
+					<rect x="3" y="6" width="11" height="15" rx="2" />
+					<path d="M8 6V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2h-5" />
+				</>
+			},
+			// A trophy
+			Self::Calculator => html! {
+				<>
+					<path d="M7 4h10v5a5 5 0 0 1-10 0z" />
+					<path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3" />
+					<path d="M12 14v4M8 21h8M9 18h6" />
+				</>
+			},
+		};
+		html! {
+			<svg
+				class="nav-icon"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="1.8"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
+			>
+				{ paths }
+			</svg>
+		}
+	}
 }
 
 pub enum Msg {
@@ -280,7 +335,7 @@ impl Component for App {
 			results: BTreeMap::new(),
 			run: None,
 			run_id: 0,
-			view: View::Calculator,
+			view: View::Builder,
 			builders: BTreeMap::new(),
 			dragging: None,
 			drop_target: None,
@@ -453,27 +508,36 @@ impl Component for App {
 
 	fn view(&self, ctx: &Context<Self>) -> Html {
 		let link = ctx.link();
+		let wide = (self.view == View::Builder).then_some("wide");
 		html! {
-			<>
-				<header class={classes!("app-header", (self.view == View::Builder).then_some("wide"))}>
-					<div class="header-row">
-						<h1>{ "Homestead Crafting Calculator" }</h1>
-						<div class="view-switch" role="group" aria-label="Page">
-							{ for [(View::Calculator, "Best decks"), (View::Builder, "Deck builder")].map(|(view, label)| {
-								let active = view == self.view;
-								html! {
+			<div class="app">
+				<nav class="sidebar" aria-label="Pages">
+					<div class="brand">{ "Homestead Crafting Calculator" }</div>
+					<ul class="nav-list">
+						{ for View::ALL.into_iter().map(|view| {
+							let active = view == self.view;
+							html! {
+								<li>
 									<button
-										aria-pressed={active.to_string()}
-										class={classes!("switch", active.then_some("active"))}
+										class={classes!("nav-item", active.then_some("active"))}
+										aria-current={active.then_some("page")}
 										onclick={link.callback(move |_| Msg::SetView(view))}
 									>
-										{ label }
+										{ view.icon() }
+										<span class="nav-text">
+											<span class="nav-name">{ view.name() }</span>
+											<span class="nav-blurb">{ view.blurb() }</span>
+										</span>
 									</button>
-								}
-							}) }
-						</div>
-					</div>
-					<nav class="tabs" role="tablist">
+								</li>
+							}
+						}) }
+					</ul>
+				</nav>
+				<div class="app-body">
+				<header class={classes!("app-header", wide)}>
+					<h1>{ self.view.name() }</h1>
+					<nav class="tabs" role="tablist" aria-label="Location">
 						{ for Location::ALL.iter().map(|&location| {
 							let active = location == self.location;
 							html! {
@@ -490,12 +554,12 @@ impl Component for App {
 						}) }
 					</nav>
 				</header>
-				<main class={classes!((self.view == View::Builder).then_some("wide"))}>
+				<main class={classes!(wide)}>
 					if self.view == View::Builder {
 						<div class="builder-layout">
 							<div class="builder-main">
-								{ self.view_builder(ctx) }
 								{ self.view_inventory(ctx) }
+								{ self.view_builder(ctx) }
 							</div>
 							{ self.view_history(link) }
 						</div>
@@ -505,7 +569,8 @@ impl Component for App {
 						{ self.view_results() }
 					}
 				</main>
-			</>
+				</div>
+			</div>
 		}
 	}
 }
@@ -1160,7 +1225,7 @@ impl App {
 					<h2 id="builder-heading">{ format!("{} deck builder", self.location.name()) }</h2>
 				</div>
 				<p class="hint">
-					{ "Pick a recipe and fill its deck with your cards, then score it. Card levels and copies come from the cards further down." }
+					{ "Pick a recipe and fill its deck with your cards, then score it. Card levels and copies come from the cards above." }
 				</p>
 				<label class="recipe-select">
 					<span>{ "Recipe" }</span>
@@ -1255,7 +1320,7 @@ impl App {
 					{ondrop}
 				>
 					if available.is_empty() {
-						<p class="muted">{ "No cards are available here. Give some cards a limit above 0 below." }</p>
+						<p class="muted">{ "No cards are available here. Give some cards a limit above 0 in the cards above." }</p>
 					}
 					{ for available.iter().map(|&(card, limit)| self.view_builder_card(link, builder, card, limit)) }
 				</div>
