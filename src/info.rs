@@ -230,47 +230,45 @@ pub struct Row {
 	pub level: u8,
 	/// One cell per column.
 	pub cells: Vec<String>,
-	/// Whether `cards.ron` lists this level, rather than falling back to the default.
-	pub listed: bool,
 }
 
 /// `kind`'s values for card levels 1 to `max_level`. A card with no values
 /// (Season, Ignite and so on) gets no columns.
 pub fn values(tables: &CardTables, kind: CardKind, max_level: u8) -> Values {
-	let (columns, cell): (Vec<&'static str>, Cell<'_>) = match kind {
+	let (columns, cell):(Vec<&'static str>, Cell<'_>) = match kind {
 		CardKind::HeatControl => (vec!["Points"], number(&tables.heat_control)),
 		CardKind::Cut => (
 			vec!["Points", "Extra triggers per Cut before it"],
 			Box::new(|level| {
-				let (range, listed) = tables.cut.entry(level);
+				let range = tables.cut.get(level);
 				let points = if range.min == range.max {
 					range.min.to_string()
 				} else {
 					format!("{}–{}", range.min, range.max)
 				};
-				(vec![points, crate::card::cut_retriggers(level).to_string()], listed)
+				vec![points, crate::card::cut_retriggers(level).to_string()]
 			}),
 		),
 		CardKind::SlowCook => (
 			vec!["Points", "Adds to", "Triggered by Heat Control"],
 			Box::new(|level| {
-				let (points, listed) = tables.slow_cook.entry(level);
+				let points = tables.slow_cook.get(level);
 				let adds_to = if level >= 2 { "Both colours" } else { "Random colour" };
 				let triggers = if level >= 5 { "Once per flip" } else { "Every trigger" };
-				(vec![points.to_string(), adds_to.into(), triggers.into()], listed)
+				vec![points.to_string(), adds_to.into(), triggers.into()]
 			}),
 		),
 		CardKind::Ferment => (
 			vec!["Extra Heat Control triggers"],
-			Box::new(|level| (vec![level.to_string()], true)),
+			Box::new(|level| vec![level.to_string()]),
 		),
 		CardKind::Bake => (vec!["Points"], number(&tables.bake)),
 		CardKind::ExactCook => (
 			vec!["Identical cards in a row"],
 			Box::new(|level| {
 				// Counts repeats after the first card of the run
-				let (repeats, listed) = tables.exact_cook.entry(level);
-				(vec![(repeats + 1).to_string()], listed)
+				let repeats = tables.exact_cook.get(level);
+				vec![(repeats + 1).to_string()]
 			}),
 		),
 		CardKind::Banquet => (vec!["Flips"], number(&tables.banquet)),
@@ -278,10 +276,10 @@ pub fn values(tables: &CardTables, kind: CardKind, max_level: u8) -> Values {
 		CardKind::Charge => (
 			vec!["Points", "Charges"],
 			Box::new(|level| {
-				let (charge, listed) = tables.charge.entry(level);
+				let charge = tables.charge.get(level);
 				// 99 stands for unlimited (see data/cards.ron)
 				let charges = if charge.charges >= 99 { "Unlimited".into() } else { charge.charges.to_string() };
-				(vec![charge.points.to_string(), charges], listed)
+				vec![charge.points.to_string(), charges]
 			}),
 		),
 		CardKind::Sharpening => (vec!["Points per later card"], number(&tables.sharpening)),
@@ -292,8 +290,8 @@ pub fn values(tables: &CardTables, kind: CardKind, max_level: u8) -> Values {
 		CardKind::ForgeExpert => (
 			vec!["Points", "Bonus per earlier hit"],
 			Box::new(|level| {
-				let (expert, listed) = tables.forge_expert.entry(level);
-				(vec![expert.value.to_string(), format!("+{}", expert.bonus)], listed)
+				let expert = tables.forge_expert.get(level);
+				vec![expert.value.to_string(), format!("+{}", expert.bonus)]
 			}),
 		),
 		CardKind::Pyroburst => (vec!["Points per hit"], number(&tables.pyroburst)),
@@ -302,36 +300,36 @@ pub fn values(tables: &CardTables, kind: CardKind, max_level: u8) -> Values {
 		CardKind::Overload => (
 			vec!["Highest colour", "Debuff"],
 			Box::new(|level| {
-				let (overload, listed) = tables.overload.entry(level);
-				(vec![format!("{:+}", overload.value), format!("−{}", overload.debuff)], listed)
+				let overload = tables.overload.get(level);
+				vec![format!("{:+}", overload.value), format!("−{}", overload.debuff)]
 			}),
 		),
 		CardKind::Enchant => (
 			vec!["Lowest colour", "Debuff"],
 			Box::new(|level| {
-				let (enchant, listed) = tables.enchant.entry(level);
-				(vec![format!("{:+}", enchant.value), format!("−{}", enchant.debuff)], listed)
+				let enchant = tables.enchant.get(level);
+				vec![format!("{:+}", enchant.value), format!("−{}", enchant.debuff)]
 			}),
 		),
 		CardKind::Fuse => (
 			vec!["Bonus", "Gap under"],
 			Box::new(|level| {
-				let (fuse, listed) = tables.fuse.entry(level);
-				(vec![format!("+{}", fuse.bonus), fuse.gap.to_string()], listed)
+				let fuse = tables.fuse.get(level);
+				vec![format!("+{}", fuse.bonus), fuse.gap.to_string()]
 			}),
 		),
 		CardKind::Reversal => (
 			vec!["Multiplier"],
 			Box::new(|level| {
-				let (mult, listed) = tables.reversal.entry(level);
-				(vec![format!("×{mult}")], listed)
+				let mult = tables.reversal.get(level);
+				vec![format!("×{mult}")]
 			}),
 		),
 		CardKind::Overcharge => (
 			vec!["Grinds boosted", "Multiplier"],
 			Box::new(|level| {
-				let (overcharge, listed) = tables.overcharge.entry(level);
-				(vec![overcharge.amount.to_string(), format!("×{}", overcharge.mult)], listed)
+				let overcharge = tables.overcharge.get(level);
+				vec![overcharge.amount.to_string(), format!("×{}", overcharge.mult)]
 			}),
 		),
 		CardKind::Season
@@ -339,30 +337,27 @@ pub fn values(tables: &CardTables, kind: CardKind, max_level: u8) -> Values {
 		| CardKind::Distill
 		| CardKind::Crystallize
 		| CardKind::Conflux
-		| CardKind::Harmonia => (Vec::new(), Box::new(|_| (Vec::new(), true))),
+		| CardKind::Harmonia => (Vec::new(), Box::new(|_| Vec::new())),
 	};
 	let rows = (1..=max_level)
-		.map(|level| {
-			let (cells, listed) = cell(level);
-			Row { level, cells, listed }
-		})
+		.map(|level| Row { level, cells: cell(level) })
 		.collect();
 	Values { columns, rows }
 }
 
-type Cell<'a> = Box<dyn Fn(u8) -> (Vec<String>, bool) + 'a>;
+type Cell<'a> = Box<dyn Fn(u8) -> Vec<String> + 'a>;
 
 fn number(table: &Table<impl Copy + ToString>) -> Cell<'_> {
 	Box::new(|level| {
-		let (value, listed) = table.entry(level);
-		(vec![value.to_string()], listed)
+		let value = table.get(level);
+		vec![value.to_string()]
 	})
 }
 
 fn signed(table: &Table<i64>) -> Cell<'_> {
 	Box::new(|level| {
-		let (value, listed) = table.entry(level);
-		(vec![format!("{value:+}")], listed)
+		let value = table.get(level);
+		vec![format!("{value:+}")]
 	})
 }
 
@@ -370,8 +365,8 @@ fn signed(table: &Table<i64>) -> Cell<'_> {
 /// and subtracts from the lowest; Grind the other way round.
 fn add_sub(table: &Table<AddSub>) -> Cell<'_> {
 	Box::new(|level| {
-		let (AddSub { add, sub }, listed) = table.entry(level);
-		(vec![format!("{add:+}"), format!("{sub:+}")], listed)
+		let AddSub { add, sub } = table.get(level);
+		vec![format!("{add:+}"), format!("{sub:+}")]
 	})
 }
 
@@ -521,7 +516,5 @@ mod tests {
 		assert_eq!(charge.rows[3].cells, ["5", "Unlimited"]);
 		let exact = values(&tables, CardKind::ExactCook, 2);
 		assert_eq!(exact.rows[1].cells, ["3"]);
-		// Heat Control has no level 9 in cards.ron
-		assert!(!values(&tables, CardKind::HeatControl, 9).rows[8].listed);
 	}
 }

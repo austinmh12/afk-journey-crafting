@@ -1577,16 +1577,6 @@ main.wide {
 	opacity: 0.7;
 }
 
-.card-values .unconfirmed {
-	color: var(--muted);
-}
-
-.dagger {
-	margin-left: 2px;
-	color: var(--star);
-	cursor: help;
-}
-
 /* Facility guide (Facilities page) */
 .facility-levels {
 	width: 100%;

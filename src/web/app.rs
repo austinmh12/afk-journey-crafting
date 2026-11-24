@@ -1807,7 +1807,6 @@ impl App {
 						if location == Location::Alchemy {
 							{ " Alchemy colours can't drop below 1." }
 						}
-						{ " Values marked † aren't confirmed: that level isn't in the data yet, so the default is shown." }
 					</p>
 				</section>
 				<div class="card-guide">
@@ -1892,14 +1891,7 @@ impl App {
 											<td class={classes!(copies_changed.then_some("changed"))}>
 												{ step.map_or_else(dash, |step| step.limit.to_string()) }
 											</td>
-											{ for row.cells.iter().map(|cell| html! {
-												<td class={classes!((!row.listed).then_some("unconfirmed"))}>
-													{ cell }
-													if !row.listed {
-														<span class="dagger" title="Not in the data yet: shows the default value">{ "†" }</span>
-													}
-												</td>
-											}) }
+											{ for row.cells.iter().map(|cell| html! { <td>{ cell }</td> }) }
 										</tr>
 									}
 								}) }

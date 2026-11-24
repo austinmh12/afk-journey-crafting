@@ -15,16 +15,6 @@ impl<T: Copy> Table<T> {
 	pub fn get(&self, level: u8) -> T {
 		self.levels.get(&level).copied().unwrap_or(self.default)
 	}
-
-	/// Whether `level` has its own value, rather than using the default.
-	pub fn listed(&self, level: u8) -> bool {
-		self.levels.contains_key(&level)
-	}
-
-	/// The value at `level`, and whether it's listed rather than the default.
-	pub fn entry(&self, level: u8) -> (T, bool) {
-		(self.get(level), self.listed(level))
-	}
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]

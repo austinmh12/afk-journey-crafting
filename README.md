@@ -45,7 +45,7 @@ The web front end is built with [Yew](https://yew.rs) and [Trunk](https://trunkr
 - The **Cards** page, a guide to the location's cards, in the order they unlock. Where two unlock at the same facility level, a card that scores comes before one that only changes how other cards score. Each card has a section with:
   - What it does: how it scores, or how it changes other cards.
   - The facility level it unlocks at.
-  - A table with a row for each facility level where the card unlocks, levels up or allows more copies per deck: the card level, the copies, and the card's values at that level (points, charges, multipliers, debuffs and so on). What changed is in bold. With a facility level set, the rows it hasn't reached are faded and the row for your level is highlighted. Values marked † aren't in `data/cards.ron` yet, so they show the card's default.
+  - A table with a row for each facility level where the card unlocks, levels up or allows more copies per deck: the card level, the copies, and the card's values at that level (points, charges, multipliers, debuffs and so on). What changed is in bold. With a facility level set, the rows it hasn't reached are faded and the row for your level is highlighted.
 - The **Facilities** page, with a row for each level of the location's facility: the recipes it unlocks, and the cards it unlocks (marked **New**), levels up or allows more copies of. With a facility level set, your level's row is highlighted.
 
 Decks are scored in [web workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API), one per CPU core, so the page stays responsive during long runs. Expect it to be slower than the command line, as WebAssembly is slower than native code.
