@@ -184,10 +184,11 @@ fn artisan_reveal<R: Rng + ?Sized>(
 	rng: &mut R,
 	mut hit_value: impl FnMut(&mut Score) -> i64,
 ) -> bool {
-	// Enhanced by 2+ cards: Heat Up bonus, Charge charges, queued Multi-Forge hits
+	// Enhanced by 2+ cards: Heat Up bonus, Charge charges, queued Multi-Forge hits, Reforge
 	let enhanced = u32::from(score.stack.heat_up_bonus != 0)
 		+ u32::from(score.stack.charge_charges != 0)
 		+ u32::from(score.stack.multi_forge_amt != 0)
+		+ u32::from(score.stack.reforge_bonus != 0)
 		>= 2;
 	let mut extra_hits = if enhanced && kind == CardKind::Pyroburst { 2 } else { 0 };
 	if kind == CardKind::ForgeExpert
@@ -212,6 +213,10 @@ fn artisan_reveal<R: Rng + ?Sized>(
 			score.forge_hit(value, rng);
 		}
 		score.artisan_triggers += 1;
+		// Every Reforge played so far follows each hit, extra hits included
+		if score.stack.reforge_bonus != 0 {
+			score.add_all(score.stack.reforge_bonus);
+		}
 	};
 
 	hit(score, rng);
@@ -429,7 +434,8 @@ impl Card {
 				// Permanent, and stacks with other Heat Ups
 				score.stack.heat_up_bonus += tables.heat_up.get(level);
 			}
-			CardKind::Reforge => score.add_all(tables.reforge.get(level)),
+			// Scores nothing itself: adds its points to both colours after every later artisan hit
+			CardKind::Reforge => score.stack.reforge_bonus += tables.reforge.get(level),
 			CardKind::Ignite => score.double_random(rng),
 
 			// ---------- Alchemy ----------

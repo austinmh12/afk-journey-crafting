@@ -10,6 +10,8 @@ pub struct Stack {
 	pub charge_charges: i64,
 	pub multi_forge_amt: i64,
 	pub heat_up_bonus: i64,
+	/// Added to both colours after every artisan hit, by the Reforges played so far.
+	pub reforge_bonus: i64,
 	pub forge_expert_mult: i64,
 	// Alchemy modifiers
 	pub overcharge_amt: i64,

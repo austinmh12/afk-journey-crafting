@@ -45,7 +45,9 @@ pub fn description(kind: CardKind) -> &'static str {
 			"The next forge card hits extra times. Multi-Forges stack, and each extra hit gets Heat Up and Charge like a normal hit."
 		}
 		CardKind::HeatUp => "Every later forge hit gains its bonus. Stacks with other Heat Ups.",
-		CardKind::Reforge => "Adds its points to both colours.",
+		CardKind::Reforge => {
+			"Scores nothing itself. After every later Forge, Forge Expert and Pyroburst hit, extra hits included, it adds its points to both colours. Stacks with other Reforges, and counts as an enhancement for those cards."
+		}
 		CardKind::Soulbind => {
 			"A forge hit that gets every enhancement from earlier cards: the Heat Up bonus, the current Forge Expert bonus, and Charge and Multi-Forge, refreshed from the cards played before it."
 		}
@@ -285,7 +287,7 @@ pub fn values(tables: &CardTables, kind: CardKind, max_level: u8) -> Values {
 		CardKind::Sharpening => (vec!["Points per later card"], number(&tables.sharpening)),
 		CardKind::MultiForge => (vec!["Extra hits"], number(&tables.multi_forge)),
 		CardKind::HeatUp => (vec!["Bonus per hit"], signed(&tables.heat_up)),
-		CardKind::Reforge => (vec!["Points to both colours"], number(&tables.reforge)),
+		CardKind::Reforge => (vec!["Points to both colours per hit"], number(&tables.reforge)),
 		CardKind::Soulbind => (vec!["Points"], number(&tables.soulbind)),
 		CardKind::ForgeExpert => (
 			vec!["Points", "Bonus per earlier hit"],

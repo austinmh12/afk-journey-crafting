@@ -362,19 +362,16 @@ mod tests {
 		score_order(&order, &recipe, &tables(), &mut rand::rng())
 	}
 
-	fn total(order: &[CardKind]) -> i64 {
-		let order: Vec<(CardKind, u8)> = order.iter().map(|&kind| (kind, 1)).collect();
-		play(Location::Forge, &order).total()
-	}
-
 	#[test]
 	fn banquet_flips_previous_card() {
-		// Reforge lvl 1 adds 3 to both colours: 1 + 3 + 3 = 7
-		assert_eq!(total(&[CardKind::Reforge, CardKind::Banquet]), 7 * 7);
+		use CardKind::*;
+		let total = |order: &[(CardKind, u8)]| play(Location::Kitchen, order).total();
+		// Slow Cook lvl 2 adds 2 to both colours: 1 + 2 + 2 = 5
+		assert_eq!(total(&[(SlowCook, 2), (Banquet, 1)]), 5 * 5);
 		// A second Banquet flips the same card again
-		assert_eq!(total(&[CardKind::Reforge, CardKind::Banquet, CardKind::Banquet]), 10 * 10);
+		assert_eq!(total(&[(SlowCook, 2), (Banquet, 1), (Banquet, 1)]), 7 * 7);
 		// Nothing to flip when played first
-		assert_eq!(total(&[CardKind::Banquet, CardKind::Reforge]), 4 * 4);
+		assert_eq!(total(&[(Banquet, 1), (SlowCook, 2)]), 3 * 3);
 	}
 
 	/// Scores cards given as (kind, level) and returns left + right, which doesn't
@@ -382,6 +379,29 @@ mod tests {
 	fn points(order: &[(CardKind, u8)]) -> i64 {
 		let score = play(Location::Forge, order);
 		score.left + score.right - 2
+	}
+
+	#[test]
+	fn reforge_follows_every_artisan_hit() {
+		use CardKind::*;
+		// Reforge lvl 2 scores nothing itself, then adds 10 to both colours after
+		// Forge lvl 1's hit of 1: 1 + 1 + 10 and 1 + 10, whichever colour Forge hits
+		assert_eq!(play(Location::Forge, &[(Reforge, 2)]).total(), 1);
+		assert_eq!(play(Location::Forge, &[(Reforge, 2), (Forge, 1)]).total(), 12 * 11);
+		// It keeps following later artisan cards, and Reforges stack
+		assert_eq!(points(&[(Reforge, 2), (Forge, 1), (Forge, 1)]), 2 * (1 + 20));
+		assert_eq!(points(&[(Reforge, 2), (Reforge, 2), (Forge, 1)]), 1 + 40);
+		// Multi-Forge and Reforge enhance Pyroburst lvl 1 (12 a hit), so it hits
+		// 1 + 2 Multi-Forge + 2 extra = 5 times, with Reforge after each
+		let score = play(Location::Forge, &[(MultiForge, 1), (Reforge, 2), (Pyroburst, 1)]);
+		assert_eq!(score.artisan_triggers, 5);
+		assert_eq!(score.left + score.right - 2, 5 * (12 + 20));
+		// Charge and Reforge: 3 hits, the first on both colours, Reforge after each
+		let score = play(Location::Forge, &[(Charge, 1), (Reforge, 2), (Pyroburst, 1)]);
+		assert_eq!(score.artisan_triggers, 3);
+		assert_eq!(score.left + score.right - 2, 24 + 2 * 12 + 3 * 20);
+		// Soulbind isn't an artisan card for Reforge
+		assert_eq!(points(&[(Reforge, 2), (Soulbind, 1)]), points(&[(Soulbind, 1)]));
 	}
 
 	#[test]
@@ -583,29 +603,30 @@ mod tests {
 	#[test]
 	fn deck_stats_cover_every_play_order() {
 		use CardKind::*;
-		// Reforge lvl 1 adds 3 to both colours; Banquet flips the card before it again.
-		// Orders, in sorted order: B R R -> 7x7, R B R -> 10x10, R R B -> 10x10
+		// Slow Cook lvl 2 adds 2 to both colours; Banquet flips the card before it again.
+		// Orders, in sorted order: S S B -> 7x7, S B S -> 7x7, B S S -> 5x5
 		let recipe = Recipe {
 			name: String::new(),
-			location: Location::Forge,
+			location: Location::Kitchen,
 			cards: 3,
-			stars: vec![40, 100, 300],
+			stars: vec![20, 40, 300],
 		};
+		let slow_cook = Card { kind: SlowCook, level: 2 };
 		// Unsorted on purpose: stats sorts the deck to cover every order
-		let deck = Deck { cards: vec![card(Reforge), card(Banquet), card(Reforge)] };
+		let deck = Deck { cards: vec![slow_cook, card(Banquet), slow_cook] };
 		// A budget of 1 scores each order once
 		let stats = deck.stats(&recipe, &tables(), 1, &mut rand::rng());
 		assert_eq!(stats.rolls, 1);
-		assert_eq!(stats.cards, vec![card(Banquet), card(Reforge), card(Reforge)]);
+		assert_eq!(stats.cards, vec![slow_cook, slow_cook, card(Banquet)]);
 		assert_eq!(stats.orders, 3);
-		assert_eq!(stats.average, (49 + 100 + 100) / 3);
-		assert_eq!(stats.minimum.order, vec![card(Banquet), card(Reforge), card(Reforge)]);
-		assert_eq!(stats.minimum.total(), 49);
-		// The first of the two 100s
-		assert_eq!(stats.maximum.order, vec![card(Reforge), card(Banquet), card(Reforge)]);
-		assert_eq!(stats.maximum.total(), 100);
+		assert_eq!(stats.average, (49 + 49 + 25) / 3);
+		assert_eq!(stats.minimum.order, vec![card(Banquet), slow_cook, slow_cook]);
+		assert_eq!(stats.minimum.total(), 25);
+		// The first of the two 49s
+		assert_eq!(stats.maximum.order, vec![slow_cook, slow_cook, card(Banquet)]);
+		assert_eq!(stats.maximum.total(), 49);
 		assert_eq!(stats.star_orders, vec![3, 2, 0]);
-		// Exactly 0, 1, 2 and 3 stars: one order at 49 (1 star), two at 100 (2 stars)
+		// Exactly 0, 1, 2 and 3 stars: one order at 25 (1 star), two at 49 (2 stars)
 		assert_eq!(stats.star_counts(), vec![0, 1, 2, 0]);
 		// No random effects, so more rolls give the same stats, with every count 10 times over
 		let sampled = deck.stats(&recipe, &tables(), 30, &mut rand::rng());
