@@ -1394,7 +1394,7 @@ impl App {
 
 		html! {
 			<div
-				class={classes!("card-tile", "builder-card", (!usable).then_some("used-up"), dragging.then_some("dragging"))}
+				class={classes!("card-tile", card_theme(kind), "builder-card", (!usable).then_some("used-up"), dragging.then_some("dragging"))}
 				role="button"
 				tabindex={if usable { "0" } else { "-1" }}
 				aria-disabled={(!usable).to_string()}
@@ -1441,7 +1441,7 @@ impl App {
 			>
 				if let Some(card) = card {
 					<div
-						class="card-tile slot-card"
+						class={classes!("card-tile", card_theme(card.kind), "slot-card")}
 						role="button"
 						tabindex="0"
 						aria-label={format!("Slot {}: {} level {}. Take out", slot + 1, card.kind.name(), card.level)}
@@ -1852,7 +1852,7 @@ impl App {
 
 		html! {
 			<section class="panel card-info" aria-labelledby={heading_id.clone()}>
-				<div class="card-detail">
+				<div class={classes!("card-detail", card_theme(kind))}>
 					<div class="card-detail-art">{ image(images::card(kind), "card-detail-image") }</div>
 					<div class="card-detail-body">
 						<h2 class="card-detail-name" id={heading_id}>{ kind.name() }</h2>
@@ -2040,7 +2040,7 @@ fn view_order(cards: &[Card]) -> Html {
 	html! {
 		<ol class="deck play-order">
 			{ for cards.iter().map(|card| html! {
-				<li class="card-tile">{ card_tile_face(*card) }</li>
+				<li class={classes!("card-tile", card_theme(card.kind))}>{ card_tile_face(*card) }</li>
 			}) }
 		</ol>
 	}
@@ -2104,7 +2104,7 @@ fn view_cards(cards: &[Card]) -> Html {
 	html! {
 		<ul class="deck">
 			{ for groups.into_iter().map(|(card, count)| html! {
-				<li class="card-tile">
+				<li class={classes!("card-tile", card_theme(card.kind))}>
 					{ card_tile_face(card) }
 					if count > 1 {
 						<span class="card-tile-badge count" aria-label={format!("{count} copies")}>{ format!("×{count}") }</span>
@@ -2124,6 +2124,15 @@ fn card_tile_face(card: Card) -> Html {
 			<span class="card-tile-level">{ format!("Lv {}", card.level) }</span>
 			<span class="card-tile-name">{ card.kind.name() }</span>
 		</>
+	}
+}
+
+/// The class that gives a card its facility's colours, like the game's cards.
+fn card_theme(kind: CardKind) -> &'static str {
+	match kind.location() {
+		Location::Kitchen => "card-kitchen",
+		Location::Forge => "card-forge",
+		Location::Alchemy => "card-alchemy",
 	}
 }
 

@@ -310,6 +310,34 @@ button:focus-visible {
 	gap: 8px;
 }
 
+/* Each facility's cards have their own colours, like the game's. Kitchen's are
+   the defaults on :root */
+.card-forge {
+	--card-frame: #f6e3d6;
+	--card-frame-edge: #c9927a;
+	--card-art-bg: #8f2418;
+	--card-art-glow: #f0843a;
+	--card-banner: #3a1c18;
+	--card-banner-text: #fbeee6;
+	--card-parchment: #fcf1ea;
+	--card-parchment-2: #f2dacd;
+	--card-ink: #5a2a1e;
+	--card-ink-soft: #6e3527;
+}
+
+.card-alchemy {
+	--card-frame: #e8e2f4;
+	--card-frame-edge: #9a8cc0;
+	--card-art-bg: #262b5a;
+	--card-art-glow: #5c7cc6;
+	--card-banner: #231e3a;
+	--card-banner-text: #f1eefa;
+	--card-parchment: #f6f3fb;
+	--card-parchment-2: #e2dbf0;
+	--card-ink: #3c3060;
+	--card-ink-soft: #4b3f72;
+}
+
 /* A card as the game shows it in a deck: art, level, and its name on a banner */
 .card-tile {
 	position: relative;
