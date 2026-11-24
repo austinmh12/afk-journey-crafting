@@ -15,7 +15,7 @@ pub fn description(kind: CardKind) -> &'static str {
 			"Adds its points to a random colour, then has a 50% chance to trigger again, over and over with no limit. Ferment gives it extra triggers, and Slow Cook played before it triggers along with it."
 		}
 		CardKind::Cut => {
-			"Adds a random number of points from its range to a random colour. It triggers again once for each Cut played in a row directly before it, or twice for each from level 9."
+			"Adds a random number of points from its range to a random colour. From level 7 it triggers again once for each Cut played in a row directly before it, or twice for each from level 9."
 		}
 		CardKind::Season => "Doubles a random colour.",
 		CardKind::SlowCook => {
@@ -66,10 +66,10 @@ pub fn description(kind: CardKind) -> &'static str {
 		CardKind::Distill => "Doubles the highest colour.",
 		CardKind::Crystallize => "Doubles the lowest colour.",
 		CardKind::Overload => {
-			"Adds to the highest colour, then any debuffs apply. Its own debuff then lowers both colours after every later Ingredients, Grind, Enchant and Overload."
+			"Adds to the highest colour, then any debuffs apply. Its own debuff then lowers a random colour at level 1, or both colours from level 2, after every later Ingredients, Grind, Enchant and Overload."
 		}
 		CardKind::Enchant => {
-			"Adds to the lowest colour, then any debuffs apply. Its own debuff then lowers both colours after every later Ingredients, Grind, Enchant and Overload."
+			"Adds to the lowest colour, then any debuffs apply. Its own debuff then lowers a random colour at level 1, or both colours from level 2, after every later Ingredients, Grind, Enchant and Overload."
 		}
 		CardKind::Fuse => {
 			"At the end of the craft, both colours gain its bonus if they're less than its gap apart."
@@ -248,8 +248,7 @@ pub fn values(tables: &CardTables, kind: CardKind, max_level: u8) -> Values {
 				} else {
 					format!("{}–{}", range.min, range.max)
 				};
-				let retriggers = if level >= 9 { "2" } else { "1" };
-				(vec![points, retriggers.into()], listed)
+				(vec![points, crate::card::cut_retriggers(level).to_string()], listed)
 			}),
 		),
 		CardKind::SlowCook => (
@@ -514,7 +513,9 @@ mod tests {
 	fn value_cells() {
 		let tables = tables();
 		let cut = values(&tables, CardKind::Cut, 9);
-		assert_eq!(cut.rows[0].cells, ["1", "1"]);
+		assert_eq!(cut.rows[0].cells, ["1", "0"]);
+		assert_eq!(cut.rows[5].cells[1], "0");
+		assert_eq!(cut.rows[6].cells[1], "1");
 		assert_eq!(cut.rows[8].cells, ["13–18", "2"]);
 		let charge = values(&tables, CardKind::Charge, 4);
 		assert_eq!(charge.rows[3].cells, ["5", "Unlimited"]);

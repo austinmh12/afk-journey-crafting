@@ -16,11 +16,32 @@ pub struct Stack {
 	pub overcharge_mult: i64,
 	pub reversal: bool,
 	pub reversal_mult: i64,
-	pub enchant_debuff: i64,
-	pub overload_debuff: i64,
+	pub enchant_debuff: Debuff,
+	pub overload_debuff: Debuff,
 	pub harmonia: bool,
 	pub fuse_bonus: i64,
 	pub fuse_gap: i64,
+}
+
+/// The debuff left by every Enchant, or every Overload, played so far. Every copy
+/// of a card in a deck is the same level, so they all debuff the same way.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Debuff {
+	/// How much each card lowers a colour by.
+	pub value: i64,
+	/// How many of the card have been played.
+	pub count: i64,
+	/// Each card's debuff hits a random colour (level 1) instead of both.
+	pub random: bool,
+}
+
+impl Debuff {
+	/// Adds a card's debuff, for the cards played after it.
+	pub fn add(&mut self, value: i64, random: bool) {
+		self.value = value;
+		self.count += 1;
+		self.random = random;
+	}
 }
 
 /// The two colour values of a craft. The final score is `left * right`.
@@ -148,9 +169,23 @@ impl Score {
 		}
 	}
 
-	/// Applies the accumulated Enchant and Overload debuffs.
-	pub fn apply_debuffs(&mut self) {
-		let debuffs = self.stack.enchant_debuff + self.stack.overload_debuff;
+	/// Applies the accumulated Enchant and Overload debuffs: first those that hit
+	/// both colours, all together, then each one that hits a random colour.
+	pub fn apply_debuffs<R: Rng + ?Sized>(&mut self, rng: &mut R) {
+		let debuffs = [self.stack.enchant_debuff, self.stack.overload_debuff];
+		let both: i64 = debuffs.iter().filter(|d| !d.random).map(|d| d.value * d.count).sum();
+		if both != 0 {
+			self.debuff_both(both);
+		}
+		for debuff in debuffs.iter().filter(|d| d.random) {
+			for _ in 0..debuff.count {
+				self.debuff_random(debuff.value, rng);
+			}
+		}
+	}
+
+	/// Lowers both colours by `debuffs`.
+	fn debuff_both(&mut self, debuffs: i64) {
 		if self.stack.reversal {
 			// Reversal turns debuffs into a bonus on the highest colour
 			self.add_highest(debuffs);
@@ -159,6 +194,28 @@ impl Score {
 			self.add_highest(-debuffs);
 		} else {
 			self.add_all(-debuffs);
+		}
+	}
+
+	/// Lowers a random colour by `debuff`.
+	fn debuff_random<R: Rng + ?Sized>(&mut self, debuff: i64, rng: &mut R) {
+		if self.stack.reversal {
+			// Reversal turns debuffs into a bonus on the highest colour
+			self.add_highest(debuff);
+		} else if self.stack.harmonia {
+			// Harmonia only allows the highest colour to decrease, so the debuff
+			// lands only if it picks the highest (the right one on a tie, as in
+			// `highest_side`)
+			let picked_highest = if rng.random::<f64>() <= 0.5 {
+				self.left > self.right
+			} else {
+				self.left <= self.right
+			};
+			if picked_highest {
+				self.add_highest(-debuff);
+			}
+		} else {
+			self.add_random(-debuff, rng);
 		}
 	}
 }

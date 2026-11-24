@@ -44,6 +44,16 @@ pub enum CardKind {
 	Overcharge,
 }
 
+/// How many times Cut triggers again for each Cut played in a row directly
+/// before it: none below level 7, once at levels 7 and 8, twice from level 9.
+pub fn cut_retriggers(level: u8) -> usize {
+	match level {
+		0..=6 => 0,
+		7 | 8 => 1,
+		_ => 2,
+	}
+}
+
 impl CardKind {
 	/// Every card kind, in variant order.
 	pub const ALL: [Self; 29] = [
@@ -308,15 +318,10 @@ impl Card {
 					}
 				};
 				hit(score, rng);
-				// Retrigger once per Cut directly before this one, twice at lvl 9+
-				for prev in context.iter().rev() {
-					if prev.kind != CardKind::Cut {
-						break;
-					}
+				// From lvl 7, retrigger for each Cut directly before this one
+				let streak = context.iter().rev().take_while(|prev| prev.kind == CardKind::Cut).count();
+				for _ in 0..streak * cut_retriggers(level) {
 					hit(score, rng);
-					if level >= 9 {
-						hit(score, rng);
-					}
 				}
 			}
 			CardKind::HeatControl => {
@@ -448,7 +453,7 @@ impl Card {
 					// Harmonia blocks the decrease to the lowest colour
 					score.add_lowest(sub);
 				}
-				score.apply_debuffs();
+				score.apply_debuffs(rng);
 			}
 			CardKind::Reversal => {
 				score.stack.reversal = true;
@@ -457,16 +462,16 @@ impl Card {
 			CardKind::Enchant => {
 				let enchant = tables.enchant.get(level);
 				score.add_lowest(enchant.value);
-				score.apply_debuffs();
-				// The debuff only applies to later cards
-				score.stack.enchant_debuff += enchant.debuff;
+				score.apply_debuffs(rng);
+				// The debuff only applies to later cards: a random colour at lvl 1, both after
+				score.stack.enchant_debuff.add(enchant.debuff, level == 1);
 			}
 			CardKind::Overload => {
 				let overload = tables.overload.get(level);
 				score.add_highest(overload.value);
-				score.apply_debuffs();
-				// The debuff only applies to later cards
-				score.stack.overload_debuff += overload.debuff;
+				score.apply_debuffs(rng);
+				// The debuff only applies to later cards: a random colour at lvl 1, both after
+				score.stack.overload_debuff.add(overload.debuff, level == 1);
 			}
 			CardKind::Harmonia => score.stack.harmonia = true,
 			CardKind::Conflux => score.add_highest(score.lowest().div_euclid(2)),
@@ -481,7 +486,7 @@ impl Card {
 				} else {
 					score.add_lowest(add);
 				}
-				score.apply_debuffs();
+				score.apply_debuffs(rng);
 			}
 		}
 	}
