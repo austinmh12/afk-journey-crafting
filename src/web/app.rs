@@ -1205,11 +1205,8 @@ impl App {
 			<tr>
 				<th scope="row">
 					<div class="recipe-heading">
-						{ image(images::recipe(recipe), "recipe-image") }
-						<div>
-							<div>{ &recipe.name }</div>
-							{ for summary }
-						</div>
+						{ recipe_tile(recipe, "span", None) }
+						{ for summary }
 					</div>
 				</th>
 				<td>{ cards }</td>
@@ -1283,11 +1280,9 @@ impl App {
 		let recipe = &self.recipes[recipe];
 		html! {
 			<div class="recipe-info">
-				{ image(images::recipe(recipe), "recipe-info-image") }
+				{ recipe_tile(recipe, "h3", Some(format!("{} cards", recipe.cards))) }
 				<div class="recipe-info-text">
-					<h3>{ &recipe.name }</h3>
-					<p class="muted">
-						{ format!("{} cards", recipe.cards) }
+					<p class="muted thresholds">
 						{ for recipe.stars.iter().enumerate().map(|(i, threshold)| html! {
 							<span class="threshold">
 								<span class="stars" aria-label={format!("{} stars at", i + 1)}>{ str::repeat("★", i + 1) }</span>
@@ -1981,14 +1976,9 @@ impl App {
 	}
 
 	fn view_recipe_chip(&self, name: &str) -> Html {
-		let recipe = self.recipes.iter().find(|recipe| recipe.name == name);
-		html! {
-			<li class="chip">
-				if let Some(recipe) = recipe {
-					{ image(images::recipe(recipe), "chip-image") }
-				}
-				<span>{ name.to_string() }</span>
-			</li>
+		match self.recipes.iter().find(|recipe| recipe.name == name) {
+			Some(recipe) => html! { <li>{ recipe_tile(recipe, "span", None) }</li> },
+			None => html! { <li class="chip">{ name.to_string() }</li> },
 		}
 	}
 }
@@ -2129,10 +2119,29 @@ fn card_tile_face(card: Card) -> Html {
 
 /// The class that gives a card its facility's colours, like the game's cards.
 fn card_theme(kind: CardKind) -> &'static str {
-	match kind.location() {
+	facility_theme(kind.location())
+}
+
+/// The class that gives a card or recipe a facility's colours.
+fn facility_theme(location: Location) -> &'static str {
+	match location {
 		Location::Kitchen => "card-kitchen",
 		Location::Forge => "card-forge",
 		Location::Alchemy => "card-alchemy",
+	}
+}
+
+/// A recipe as the game shows it: its art on a card in its facility's colours,
+/// with its name below in a `name_tag` element, and an optional line under that.
+fn recipe_tile(recipe: &Recipe, name_tag: &'static str, detail: Option<String>) -> Html {
+	html! {
+		<div class={classes!("recipe-tile", facility_theme(recipe.location))}>
+			<span class="recipe-tile-art">{ image(images::recipe(recipe), "recipe-tile-image") }</span>
+			<@{name_tag} class="recipe-tile-name">{ &recipe.name }</@>
+			if let Some(detail) = detail {
+				<span class="recipe-tile-detail">{ detail }</span>
+			}
+		</div>
 	}
 }
 

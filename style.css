@@ -518,11 +518,6 @@ button:focus-visible {
 	opacity: 0.5;
 }
 
-.recipe-image {
-	width: 44px;
-	height: 44px;
-}
-
 .chip-image {
 	width: 18px;
 	height: 18px;
@@ -586,39 +581,88 @@ input:disabled {
 
 .recipe-info {
 	display: flex;
-	align-items: flex-start;
-	gap: 14px;
+	align-items: center;
+	gap: 16px;
 	margin-top: 14px;
 	padding: 12px;
 	border-radius: var(--radius);
 	background: var(--surface-2);
-}
-
-.recipe-info-image {
-	width: 72px;
-	height: 72px;
-	border-radius: 6px;
+	--tile-width: 120px;
 }
 
 .recipe-info-text {
 	display: grid;
-	gap: 4px;
+	gap: 6px;
 	min-width: 0;
-}
-
-.recipe-info-text h3 {
-	margin: 0;
-	font-size: 1.1rem;
 }
 
 .recipe-info-text p {
 	margin: 0;
 }
 
+.recipe-info .thresholds {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px 12px;
+}
+
 .recipe-info .threshold {
-	margin-left: 12px;
 	white-space: nowrap;
 	font-variant-numeric: tabular-nums;
+}
+
+/* A recipe as the game shows it: its art inset on a parchment card, name below */
+.recipe-tile {
+	display: flex;
+	flex-direction: column;
+	flex: none;
+	width: var(--tile-width, 84px);
+	padding: 3px 3px 0;
+	border: 2px solid var(--card-frame);
+	border-radius: 10px;
+	background: linear-gradient(var(--card-parchment), var(--card-parchment-2));
+	box-shadow: 0 0 0 1px var(--card-frame-edge), 0 1px 3px rgb(0 0 0 / 0.2);
+	font-family: var(--card-serif);
+	color: var(--card-ink);
+	text-align: center;
+}
+
+.recipe-tile-art {
+	display: block;
+	aspect-ratio: 131 / 135;
+}
+
+.recipe-tile-image {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}
+
+.recipe-tile .recipe-tile-name {
+	display: block;
+	margin: 0;
+	padding: 2px 2px 4px;
+	font-size: 0.78rem;
+	font-weight: 400;
+	line-height: 1.15;
+	text-wrap: balance;
+	overflow-wrap: anywhere;
+}
+
+.recipe-tile-detail {
+	margin-top: -3px;
+	padding: 0 2px 5px;
+	font-size: 0.72rem;
+	color: var(--card-ink-soft);
+}
+
+.recipe-info .recipe-tile-name {
+	font-size: 1rem;
+}
+
+.recipe-info .recipe-tile-detail {
+	font-size: 0.82rem;
 }
 
 .power {
@@ -869,9 +913,8 @@ input:disabled {
 		grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
 	}
 
-	.recipe-info-image {
-		width: 56px;
-		height: 56px;
+	.recipe-info {
+		--tile-width: 96px;
 	}
 }
 
