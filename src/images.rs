@@ -2,11 +2,11 @@
 //!
 //! Files are named after the item's name in PascalCase: each word starts with
 //! a capital letter and every character other than a letter or digit is
-//! dropped. Facilities are PNGs; cards and recipes are JPEGs:
+//! dropped. Every image is a PNG:
 //!
 //! - `static/facilities/Kitchen.png`
-//! - `static/cards/HeatControl.jpg`, `static/cards/MultiForge.jpg`
-//! - `static/recipes/RoundBread.jpg`, `static/recipes/ShroomStirFry.jpg`
+//! - `static/cards/HeatControl.png`, `static/cards/MultiForge.png`
+//! - `static/recipes/RoundBread.png`, `static/recipes/ShroomStirFry.png`
 //!
 //! Paths are relative, so they work when the site is served from a sub-path
 //! such as GitHub Pages' `/<repository>/`.
@@ -19,11 +19,11 @@ pub fn facility(location: Location) -> String {
 }
 
 pub fn card(kind: CardKind) -> String {
-	path("cards", kind.name(), "jpg")
+	path("cards", kind.name(), "png")
 }
 
 pub fn recipe(recipe: &Recipe) -> String {
-	path("recipes", &recipe.name, "jpg")
+	path("recipes", &recipe.name, "png")
 }
 
 fn path(folder: &str, name: &str, extension: &str) -> String {
@@ -66,8 +66,8 @@ mod tests {
 	#[test]
 	fn paths() {
 		assert_eq!(facility(Location::Alchemy), "static/facilities/Alchemy.png");
-		assert_eq!(card(CardKind::HeatControl), "static/cards/HeatControl.jpg");
-		assert_eq!(card(CardKind::MultiForge), "static/cards/MultiForge.jpg");
+		assert_eq!(card(CardKind::HeatControl), "static/cards/HeatControl.png");
+		assert_eq!(card(CardKind::MultiForge), "static/cards/MultiForge.png");
 	}
 
 	/// Lists every card, facility and recipe image the page expects but that

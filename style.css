@@ -16,6 +16,19 @@
 	--good: #2f7a3e;
 	--bad: #b3402e;
 	--radius: 8px;
+	/* Cards look like the game's in both themes */
+	--card-frame: #eadcbc;
+	--card-frame-edge: #b89c6a;
+	--card-art-bg: #2e1d3a;
+	--card-art-glow: #5a3a6b;
+	--card-banner: #2a1f2b;
+	--card-banner-text: #f6ecd6;
+	--card-parchment: #f8f0e0;
+	--card-parchment-2: #eadcc0;
+	--card-ink: #4a3628;
+	--card-ink-soft: #5e4634;
+	--card-check: #3fae4f;
+	--card-serif: Georgia, "Times New Roman", serif;
 	font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 	font-size: 15px;
 	line-height: 1.45;
@@ -288,13 +301,102 @@ button:focus-visible {
 }
 
 .deck {
+	--tile-width: 84px;
 	list-style: none;
 	margin: 0;
 	padding: 0;
 	display: flex;
 	flex-wrap: wrap;
-	gap: 6px;
+	gap: 8px;
 }
+
+/* A card as the game shows it in a deck: art, level, and its name on a banner */
+.card-tile {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	width: var(--tile-width, auto);
+	min-width: 0;
+	border: 2px solid var(--card-frame);
+	border-radius: 9px;
+	background: var(--card-banner);
+	box-shadow: 0 0 0 1px var(--card-frame-edge), 0 1px 3px rgb(0 0 0 / 0.25);
+	overflow: hidden;
+	font-family: var(--card-serif);
+}
+
+.card-tile-art {
+	display: block;
+	aspect-ratio: 135 / 111;
+	background: radial-gradient(circle at 50% 40%, var(--card-art-glow), var(--card-art-bg));
+}
+
+.card-tile-image {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.card-tile-name {
+	flex: 1;
+	display: grid;
+	place-items: center;
+	padding: 3px 4px 4px;
+	border-top: 1px solid var(--card-frame-edge);
+	color: var(--card-banner-text);
+	font-size: 0.78rem;
+	line-height: 1.15;
+	text-align: center;
+	text-wrap: balance;
+	overflow-wrap: anywhere;
+	text-shadow: 0 1px 1px rgb(0 0 0 / 0.6);
+}
+
+.card-tile-level,
+.card-tile-badge,
+.play-order .card-tile::before {
+	position: absolute;
+	top: 3px;
+	padding: 0 5px;
+	border-radius: 999px;
+	background: rgb(20 14 22 / 0.78);
+	color: var(--card-banner-text);
+	font: 700 0.68rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	font-variant-numeric: tabular-nums;
+}
+
+.card-tile-level {
+	left: 3px;
+}
+
+.card-tile-badge,
+.play-order .card-tile::before {
+	right: 3px;
+}
+
+.card-tile-badge.count,
+.play-order .card-tile::before {
+	background: var(--card-frame);
+	color: var(--card-ink);
+}
+
+/* Every copy is in the deck: the game's green tick */
+.card-tile-check {
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	display: grid;
+	place-items: center;
+	width: 22px;
+	height: 22px;
+	border: 2px solid #ffffff;
+	border-radius: 50%;
+	background: var(--card-check);
+	color: #ffffff;
+	font: 800 0.75rem/1 system-ui, sans-serif;
+}
+
 
 .chip {
 	display: inline-flex;
@@ -519,8 +621,8 @@ input:disabled {
 
 .builder-inventory {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-	gap: 8px;
+	grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+	gap: 10px;
 	padding: 8px;
 	margin: 0 -8px;
 	border: 2px dashed transparent;
@@ -535,67 +637,36 @@ input:disabled {
 
 .builder-card,
 .slot-card {
-	display: grid;
-	grid-template-columns: auto 1fr;
-	grid-template-rows: auto auto;
-	column-gap: 8px;
-	align-items: center;
-	padding: 8px 10px;
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	background: var(--surface);
 	cursor: grab;
 	user-select: none;
-	transition: border-color 0.12s, box-shadow 0.12s, opacity 0.12s;
+	transition: box-shadow 0.12s, transform 0.12s, opacity 0.12s;
 }
 
 .builder-card:hover,
 .slot-card:hover {
-	border-color: var(--accent);
-	box-shadow: 0 1px 4px rgb(0 0 0 / 0.1);
+	box-shadow: 0 0 0 2px var(--accent), 0 2px 6px rgb(0 0 0 / 0.25);
+	transform: translateY(-1px);
 }
 
 .builder-card:focus-visible,
 .slot-card:focus-visible {
 	outline: 2px solid var(--accent);
-	outline-offset: 1px;
-}
-
-.builder-card-image {
-	width: 40px;
-	height: 40px;
-	grid-row: span 3;
-	border-radius: 4px;
-}
-
-.builder-card .card-name,
-.slot-card .card-name {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.builder-card .level,
-.slot-card .level,
-.builder-card .copies {
-	font-size: 0.78rem;
-	color: var(--muted);
-}
-
-.builder-card .copies {
-	font-variant-numeric: tabular-nums;
+	outline-offset: 2px;
 }
 
 .builder-card.used-up {
 	cursor: not-allowed;
-	opacity: 0.45;
-	box-shadow: none;
-	border-color: var(--border);
-	background: var(--surface-2);
+	box-shadow: 0 0 0 1px var(--card-frame-edge);
+	transform: none;
 }
 
-.builder-card.used-up .builder-card-image {
-	filter: grayscale(1);
+.builder-card.used-up .card-tile-art,
+.builder-card.used-up .card-tile-name {
+	filter: grayscale(0.7) brightness(0.7);
+}
+
+.builder-card.used-up .card-tile-level {
+	display: none;
 }
 
 .dragging {
@@ -607,14 +678,13 @@ input:disabled {
 	margin: 0;
 	padding: 0;
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-	gap: 8px;
+	grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+	gap: 10px;
 }
 
 .slot {
 	position: relative;
 	display: grid;
-	min-height: 72px;
 	border-radius: var(--radius);
 	transition: background-color 0.12s, outline-color 0.12s;
 	outline: 2px dashed transparent;
@@ -622,6 +692,7 @@ input:disabled {
 }
 
 .slot.empty {
+	aspect-ratio: 1;
 	place-items: center;
 	border: 2px dashed var(--border);
 	background: var(--surface-2);
@@ -648,8 +719,7 @@ input:disabled {
 }
 
 .slot.drop-active .slot-card {
-	border-color: var(--accent);
-	background: var(--accent-soft);
+	box-shadow: 0 0 0 2px var(--accent);
 }
 
 .builder-actions {
@@ -757,21 +827,18 @@ input:disabled {
 	counter-reset: play;
 }
 
-.play-order .chip {
+.play-order .card-tile {
 	counter-increment: play;
 }
 
-.play-order .chip::before {
+.play-order .card-tile::before {
 	content: counter(play);
-	font-size: 0.75rem;
-	font-weight: 700;
-	color: var(--muted);
 }
 
 @media (max-width: 480px) {
 	.builder-inventory,
 	.slots {
-		grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
 	}
 
 	.recipe-info-image {
@@ -936,12 +1003,12 @@ main.wide {
 }
 
 .history-entry .deck {
-	gap: 4px;
+	--tile-width: 66px;
+	gap: 6px;
 }
 
-.history-entry .chip {
-	font-size: 0.85rem;
-	padding: 2px 8px;
+.history-entry .card-tile-name {
+	font-size: 0.68rem;
 }
 
 .history-footer {
@@ -1303,34 +1370,80 @@ main.wide {
 
 .card-guide {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 640px), 1fr));
 	gap: 16px;
 	align-items: start;
 }
 
+/* The full card beside its values */
 .card-info {
-	display: grid;
-	gap: 12px;
-	min-width: 0;
-}
-
-.card-info-header {
 	display: flex;
-	align-items: center;
-	gap: 12px;
-}
-
-.card-info-image {
-	width: 52px;
-	height: 52px;
-	border-radius: 6px;
-}
-
-.card-info-title {
-	display: grid;
-	gap: 2px;
-	flex: 1;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 16px;
 	min-width: 0;
+}
+
+.card-detail {
+	flex: 0 0 180px;
+	display: flex;
+	flex-direction: column;
+	border: 3px solid var(--card-frame);
+	border-radius: 14px;
+	background: linear-gradient(var(--card-parchment), var(--card-parchment-2));
+	box-shadow: 0 0 0 1px var(--card-frame-edge), 0 2px 8px rgb(0 0 0 / 0.2);
+	overflow: hidden;
+	font-family: var(--card-serif);
+	color: var(--card-ink);
+}
+
+.card-detail-art {
+	aspect-ratio: 135 / 111;
+	background: radial-gradient(circle at 50% 40%, var(--card-art-glow), var(--card-art-bg));
+	border-bottom: 2px solid var(--card-frame-edge);
+}
+
+.card-detail-image {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.card-detail-body {
+	display: grid;
+	gap: 4px;
+	padding: 8px 10px 12px;
+	text-align: center;
+}
+
+.card-detail .card-detail-name {
+	font-size: 1.3rem;
+	font-weight: 600;
+	line-height: 1.15;
+}
+
+.card-detail-text {
+	margin: 0;
+	font-size: 0.82rem;
+	line-height: 1.3;
+	color: var(--card-ink-soft);
+}
+
+.card-info-main {
+	flex: 1 1 280px;
+	display: grid;
+	gap: 8px;
+	align-content: start;
+	min-width: 0;
+}
+
+.card-info-meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
 }
 
 .card-info-unlock {
@@ -1339,14 +1452,8 @@ main.wide {
 }
 
 .card-info-yours {
-	align-self: start;
 	font-size: 0.8rem;
 	font-weight: 600;
-}
-
-.card-info-description {
-	margin: 0;
-	line-height: 1.45;
 }
 
 .card-values {

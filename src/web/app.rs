@@ -1394,7 +1394,7 @@ impl App {
 
 		html! {
 			<div
-				class={classes!("builder-card", (!usable).then_some("used-up"), dragging.then_some("dragging"))}
+				class={classes!("card-tile", "builder-card", (!usable).then_some("used-up"), dragging.then_some("dragging"))}
 				role="button"
 				tabindex={if usable { "0" } else { "-1" }}
 				aria-disabled={(!usable).to_string()}
@@ -1409,10 +1409,13 @@ impl App {
 				onclick={link.callback(move |_| Msg::BuilderAdd(kind))}
 				onkeydown={on_activate(link, move || Msg::BuilderAdd(kind))}
 			>
-				{ image(images::card(kind), "builder-card-image") }
-				<span class="card-name">{ kind.name() }</span>
-				<span class="level">{ format!("Lv {}", card.level) }</span>
-				<span class="copies">{ format!("{remaining} of {limit} left") }</span>
+				{ card_tile_face(card) }
+				<span class="card-tile-badge copies" title={format!("{remaining} of {limit} left")}>
+					{ format!("{remaining}/{limit}") }
+				</span>
+				if !usable {
+					<span class="card-tile-check" aria-hidden="true">{ "✓" }</span>
+				}
 			</div>
 		}
 	}
@@ -1438,7 +1441,7 @@ impl App {
 			>
 				if let Some(card) = card {
 					<div
-						class="slot-card"
+						class="card-tile slot-card"
 						role="button"
 						tabindex="0"
 						aria-label={format!("Slot {}: {} level {}. Take out", slot + 1, card.kind.name(), card.level)}
@@ -1452,9 +1455,7 @@ impl App {
 						onclick={link.callback(move |_| Msg::BuilderRemove(slot))}
 						onkeydown={on_activate(link, move || Msg::BuilderRemove(slot))}
 					>
-						{ image(images::card(card.kind), "builder-card-image") }
-						<span class="card-name">{ card.kind.name() }</span>
-						<span class="level">{ format!("Lv {}", card.level) }</span>
+						{ card_tile_face(card) }
 					</div>
 				} else {
 					<span class="slot-empty">{ "Empty" }</span>
@@ -1851,61 +1852,65 @@ impl App {
 
 		html! {
 			<section class="panel card-info" aria-labelledby={heading_id.clone()}>
-				<div class="card-info-header">
-					{ image(images::card(kind), "card-info-image") }
-					<div class="card-info-title">
-						<h2 id={heading_id}>{ kind.name() }</h2>
-						<span class="card-info-unlock">{ unlock_text }</span>
+				<div class="card-detail">
+					<div class="card-detail-art">{ image(images::card(kind), "card-detail-image") }</div>
+					<div class="card-detail-body">
+						<h2 class="card-detail-name" id={heading_id}>{ kind.name() }</h2>
+						<p class="card-detail-text">{ info::description(kind) }</p>
 					</div>
-					if let Some(level) = yours {
-						<span class="chip card-info-yours">{ format!("Yours: Lv {level}") }</span>
-					}
 				</div>
-				<p class="card-info-description">{ info::description(kind) }</p>
-				<div class="table-wrap">
-					<table class="card-values">
-						<thead>
-							<tr>
-								<th scope="col">{ "Facility level" }</th>
-								<th scope="col">{ "Card level" }</th>
-								<th scope="col">{ "Copies" }</th>
-								{ for values.columns.iter().map(|column| html! { <th scope="col">{ *column }</th> }) }
-							</tr>
-						</thead>
-						<tbody>
-							{ for rows.iter().enumerate().map(|(i, &(step, row))| {
-								let previous = i.checked_sub(1).and_then(|prev| rows[prev].0);
-								let level_changed = previous.is_none_or(|prev| step.is_none_or(|step| step.card_level != prev.card_level));
-								let copies_changed = previous.is_none_or(|prev| step.is_none_or(|step| step.limit != prev.limit));
-								let reached = match (facility.level, step) {
-									(Some(have), Some(step)) => step.facility_level <= have,
-									_ => true,
-								};
-								let is_current = current == Some(i);
-								let dash = || "—".to_string();
-								html! {
-									<tr
-										class={classes!(is_current.then_some("current"), (!reached).then_some("unreached"))}
-										aria-current={is_current.then_some("true")}
-									>
-										<th scope="row">{ step.map_or_else(dash, |step| step.facility_level.to_string()) }</th>
-										<td class={classes!(level_changed.then_some("changed"))}>{ format!("Lv {}", row.level) }</td>
-										<td class={classes!(copies_changed.then_some("changed"))}>
-											{ step.map_or_else(dash, |step| step.limit.to_string()) }
-										</td>
-										{ for row.cells.iter().map(|cell| html! {
-											<td class={classes!((!row.listed).then_some("unconfirmed"))}>
-												{ cell }
-												if !row.listed {
-													<span class="dagger" title="Not in the data yet: shows the default value">{ "†" }</span>
-												}
+				<div class="card-info-main">
+					<div class="card-info-meta">
+						<span class="card-info-unlock">{ unlock_text }</span>
+						if let Some(level) = yours {
+							<span class="chip card-info-yours">{ format!("Yours: Lv {level}") }</span>
+						}
+					</div>
+					<div class="table-wrap">
+						<table class="card-values">
+							<thead>
+								<tr>
+									<th scope="col">{ "Facility level" }</th>
+									<th scope="col">{ "Card level" }</th>
+									<th scope="col">{ "Copies" }</th>
+									{ for values.columns.iter().map(|column| html! { <th scope="col">{ *column }</th> }) }
+								</tr>
+							</thead>
+							<tbody>
+								{ for rows.iter().enumerate().map(|(i, &(step, row))| {
+									let previous = i.checked_sub(1).and_then(|prev| rows[prev].0);
+									let level_changed = previous.is_none_or(|prev| step.is_none_or(|step| step.card_level != prev.card_level));
+									let copies_changed = previous.is_none_or(|prev| step.is_none_or(|step| step.limit != prev.limit));
+									let reached = match (facility.level, step) {
+										(Some(have), Some(step)) => step.facility_level <= have,
+										_ => true,
+									};
+									let is_current = current == Some(i);
+									let dash = || "—".to_string();
+									html! {
+										<tr
+											class={classes!(is_current.then_some("current"), (!reached).then_some("unreached"))}
+											aria-current={is_current.then_some("true")}
+										>
+											<th scope="row">{ step.map_or_else(dash, |step| step.facility_level.to_string()) }</th>
+											<td class={classes!(level_changed.then_some("changed"))}>{ format!("Lv {}", row.level) }</td>
+											<td class={classes!(copies_changed.then_some("changed"))}>
+												{ step.map_or_else(dash, |step| step.limit.to_string()) }
 											</td>
-										}) }
-									</tr>
-								}
-							}) }
-						</tbody>
-					</table>
+											{ for row.cells.iter().map(|cell| html! {
+												<td class={classes!((!row.listed).then_some("unconfirmed"))}>
+													{ cell }
+													if !row.listed {
+														<span class="dagger" title="Not in the data yet: shows the default value">{ "†" }</span>
+													}
+												</td>
+											}) }
+										</tr>
+									}
+								}) }
+							</tbody>
+						</table>
+					</div>
 				</div>
 			</section>
 		}
@@ -2035,11 +2040,7 @@ fn view_order(cards: &[Card]) -> Html {
 	html! {
 		<ol class="deck play-order">
 			{ for cards.iter().map(|card| html! {
-				<li class="chip">
-					{ image(images::card(card.kind), "chip-image") }
-					<span>{ card.kind.name() }</span>
-					<span class="level">{ format!("Lv {}", card.level) }</span>
-				</li>
+				<li class="card-tile">{ card_tile_face(*card) }</li>
 			}) }
 		</ol>
 	}
@@ -2103,16 +2104,26 @@ fn view_cards(cards: &[Card]) -> Html {
 	html! {
 		<ul class="deck">
 			{ for groups.into_iter().map(|(card, count)| html! {
-				<li class="chip">
+				<li class="card-tile">
+					{ card_tile_face(card) }
 					if count > 1 {
-						<span class="count">{ format!("{count}×") }</span>
+						<span class="card-tile-badge count" aria-label={format!("{count} copies")}>{ format!("×{count}") }</span>
 					}
-					{ image(images::card(card.kind), "chip-image") }
-					<span>{ card.kind.name() }</span>
-					<span class="level">{ format!("Lv {}", card.level) }</span>
 				</li>
 			}) }
 		</ul>
+	}
+}
+
+/// A card as the game shows it in a deck: its art, its level in the corner and
+/// its name on a banner across the bottom. Goes inside a `.card-tile` element.
+fn card_tile_face(card: Card) -> Html {
+	html! {
+		<>
+			<span class="card-tile-art">{ image(images::card(card.kind), "card-tile-image") }</span>
+			<span class="card-tile-level">{ format!("Lv {}", card.level) }</span>
+			<span class="card-tile-name">{ card.kind.name() }</span>
+		</>
 	}
 }
 
